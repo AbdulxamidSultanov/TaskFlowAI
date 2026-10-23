@@ -7,7 +7,7 @@
   --background: #F8FAFC;
   --sidebar: #FFFFFF;
   --surface: #FFFFFF;
-  --surface-elevated: #FFFFFF;
+  --surface-elevated: #E5EEFF;
   --surface-hover: #F1F5F9;
   --border: #E2E8F0;
 
@@ -17,7 +17,7 @@
 
   --primary: #4F46E5;
   --primary-hover: #4338CA;
-  --accent: #7C3AED;
+  --accent: #712AE2;
 
   --success: #059669;
   --warning: #D97706;
@@ -46,38 +46,41 @@
   --color-error: var(--error);
   --color-info: var(--info);
 
-  /*Primary Text Font*/
+  /* Основной шрифт интерфейса */
   --font-sans: var(--font-inter);
-  /*Only for headings*/
-  --font-mono: var(--font-playFair);
+
+  /* Только для заголовков */
+  --font-heading: var(--font-playFair, Georgia), serif;
 }
+[data-theme="dark"] {
+  color-scheme: dark;
+  --background: #0B1120;
+  --sidebar: #0F172A;
+  --surface: #151E30;
+  --surface-elevated: #1C2940;
+  --surface-hover: #243249;
+  --border: #2A3850;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0B1120;
-    --sidebar: #0F172A;
-    --surface: #151E30;
-    --surface-elevated: #1C2940;
-    --surface-hover: #243249;
-    --border: #2A3850;
+  --text-primary: #F1F5F9;
+  --text-secondary: #B0BDD0;
+  --text-muted: #8493AA;
 
-    --text-primary: #F1F5F9;
-    --text-secondary: #B0BDD0;
-    --text-muted: #8493AA;
+  --primary: #818CF8;
+  --primary-hover: #A5B4FC;
+  --accent: #A78BFA;
 
-    --primary: #818CF8;
-    --primary-hover: #A5B4FC;
-    --accent: #A78BFA;
-
-    --success: #34D399;
-    --warning: #FBBF24;
-    --error: #F87171;
-    --info: #60A5FA;
-  }
+  --success: #34D399;
+  --warning: #FBBF24;
+  --error: #F87171;
+  --info: #60A5FA;
 }
 
 body {
   background: var(--background);
   color: var(--text-primary);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-inter), Arial, Helvetica, sans-serif;
+}
+
+.search_hotkey {
+  word-spacing: 1px;
 }
