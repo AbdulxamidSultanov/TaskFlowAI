@@ -3,11 +3,6 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   /* config options here */
-  serverExternalPackages: ["better-sqlite3"],
-  // The seeded SQLite snapshot is copied to /tmp at runtime on Vercel.
-  outputFileTracingIncludes: {
-    "/**": ["./data/**/*"],
-  },
   experimental: {
     agentFeedback: true,
   },
