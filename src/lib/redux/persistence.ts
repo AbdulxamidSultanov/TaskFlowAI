@@ -102,7 +102,10 @@ export function clearPersistedState() {
  * Saves Redux state after actions are dispatched and flushes immediately when
  * the page is being hidden/unloaded. Returns an unsubscribe/cleanup function.
  */
-export function startStatePersistence(store: PersistableStore) {
+export function startStatePersistence(
+    store: PersistableStore,
+    selectState: (state: unknown) => unknown = (state) => state,
+) {
     if (typeof window === "undefined") return () => {};
 
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -116,7 +119,7 @@ export function startStatePersistence(store: PersistableStore) {
 
     const flush = () => {
         cancelPendingSave();
-        persistState(store.getState());
+        persistState(selectState(store.getState()));
     };
 
     pendingSaveCancels.add(cancelPendingSave);
