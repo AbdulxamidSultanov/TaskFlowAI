@@ -605,7 +605,11 @@
         "legend": "Projects",
         "newEvent": "New event",
         "noEvents": "No events on this day",
-        "title": "Calendar"
+        "title": "Calendar",
+        "tasks": "Tasks",
+        "events": "Events",
+        "noTasks": "No tasks on this day",
+        "newTask": "New task"
     },
     "eventForm": {
         "allDay": "All day",

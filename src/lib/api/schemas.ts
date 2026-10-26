@@ -134,6 +134,8 @@ export const taskListQuerySchema = z.object({
     priority: z.enum(taskPriorities).optional(),
     search: z.string().trim().max(120).optional(),
     due: z.enum(["overdue", "today", "week"]).optional(),
+    dueFrom: isoDate.optional(),
+    dueTo: isoDate.optional(),
     page: z.coerce.number().int().min(1).optional(),
     pageSize: z.coerce.number().int().min(1).max(100).optional(),
 });

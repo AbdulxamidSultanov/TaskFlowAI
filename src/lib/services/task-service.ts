@@ -104,6 +104,8 @@ export type TaskFilters = {
     priority?: Task["priority"];
     search?: string;
     due?: "overdue" | "today" | "week";
+    dueFrom?: string;
+    dueTo?: string;
 };
 
 function baseTaskQuery() {
@@ -187,6 +189,13 @@ function buildTaskWhere(user: AuthUser, filters: TaskFilters) {
             and(gte(tasks.dueDate, now), lte(tasks.dueDate, end)),
         );
     }
+    if (filters.dueFrom) {
+        conditions.push(gte(tasks.dueDate, new Date(filters.dueFrom)));
+    }
+    if (filters.dueTo) {
+        conditions.push(lte(tasks.dueDate, new Date(filters.dueTo)));
+    }
+
     return conditions;
 }
 

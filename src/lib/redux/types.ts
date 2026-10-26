@@ -556,6 +556,8 @@ export type TaskListArgs = PageArgs & {
     priority?: TaskPriority;
     search?: string;
     due?: "overdue" | "today" | "week";
+    dueFrom?: string;
+    dueTo?: string;
 };
 
 export type CommentCreateInput = {
