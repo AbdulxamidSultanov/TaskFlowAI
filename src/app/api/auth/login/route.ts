@@ -26,7 +26,7 @@ export async function POST(request: Request) {
             throw new ApiError(401, "Invalid email or password", "INVALID_CREDENTIALS");
         }
 
-        await createSession(user.id, request);
+        await createSession(user.id);
 
         return ok(await getAuthUser());
     });
