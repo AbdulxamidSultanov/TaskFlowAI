@@ -70,6 +70,10 @@ export function WorkspaceProvider({children}: {children: ReactNode}) {
         refetch: refetchWorkspaces,
     } = useGetWorkspacesQuery(undefined, {
         skip: !me,
+        // The workspace list holds the task/project counters shown in the
+        // sidebar. Always revalidate it on mount so a persisted snapshot can
+        // never keep stale numbers after a reload.
+        refetchOnMountOrArgChange: true,
     });
 
     const unauthorized =

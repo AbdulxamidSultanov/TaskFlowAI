@@ -20,16 +20,23 @@ const appReducer = combineReducers({
 export type RootState = ReturnType<typeof appReducer>;
 
 /**
- * Replaces the whole state after hydration. The store is created empty so the
- * first client render matches the server HTML; the persisted cache is applied
- * from a `useEffect` in `Providers` once hydration has finished.
+ * Restores only the small UI state that should survive a reload. The RTK
+ * Query cache is intentionally not persisted: stale snapshots made counters
+ * and lists show old data after a reload (sometimes indefinitely, because a
+ * hydrated query is already considered "cached"). API data is always fetched
+ * fresh from the server instead.
  */
 function rootReducer(
     state: RootState | undefined,
     action: AnyAction | UnknownAction,
 ): RootState {
     if (action.type === HYDRATE_ACTION) {
-        return action.payload as RootState;
+        const base = state ?? appReducer(undefined, {type: "@@INIT"});
+        const persisted = (action.payload ?? {}) as Partial<RootState>;
+        return {
+            ...base,
+            workspace: persisted.workspace ?? base.workspace,
+        };
     }
     return appReducer(state, action as UnknownAction);
 }
@@ -93,5 +100,8 @@ export function hydrateStore(store: AppStore) {
         store.dispatch({type: HYDRATE_ACTION, payload: persisted});
     }
 
-    startStatePersistence(store);
+    startStatePersistence(store, (state) => {
+        const {workspace} = state as RootState;
+        return {workspace};
+    });
 }

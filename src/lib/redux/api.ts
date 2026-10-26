@@ -346,7 +346,7 @@ export const taskflowApi = createApi({
             }),
             transformResponse: (response) =>
                 unwrap<types.ProjectRecord>(response),
-            invalidatesTags: ["Project", "Analytics"],
+            invalidatesTags: ["Project", "Workspace", "Analytics"],
         }),
         updateProject: builder.mutation<
             types.Project,
@@ -366,7 +366,7 @@ export const taskflowApi = createApi({
                 url: entityPath("/projects", id),
                 method: "DELETE",
             }),
-            invalidatesTags: ["Project", "Task", "Analytics"],
+            invalidatesTags: ["Project", "Task", "Workspace", "Analytics"],
         }),
 
         getTasks: builder.query<
@@ -395,6 +395,7 @@ export const taskflowApi = createApi({
             invalidatesTags: [
                 "Task",
                 "Project",
+                "Workspace",
                 "Analytics",
                 "Notification",
             ],
@@ -413,6 +414,7 @@ export const taskflowApi = createApi({
             invalidatesTags: [
                 "Task",
                 "Project",
+                "Workspace",
                 "Analytics",
                 "Notification",
             ],
@@ -425,6 +427,7 @@ export const taskflowApi = createApi({
             invalidatesTags: [
                 "Task",
                 "Project",
+                "Workspace",
                 "Analytics",
             ],
         }),
