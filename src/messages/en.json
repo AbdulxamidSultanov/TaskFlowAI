@@ -466,7 +466,7 @@
         "passwordTooShort": "Password must be at least 8 characters",
         "passwordsMismatch": "Passwords do not match",
         "registerError": "Could not create your account",
-        "registerNote": "After signing up you will join your team's workspace.",
+        "registerNote": "After signing up you get your own workspace and can start working right away.",
         "registerSubtitle": "Create an account and start working with your team",
         "registerTitle": "Create account",
         "showPassword": "Show password",

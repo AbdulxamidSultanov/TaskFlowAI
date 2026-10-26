@@ -10,7 +10,7 @@ import {
 } from "@/lib/api/http";
 import {workspaceCreateSchema} from "@/lib/api/schemas";
 import {getAccessibleWorkspaceIds} from "@/lib/auth/guards";
-import {requireRole, requireUser} from "@/lib/auth/session";
+import {requireUser} from "@/lib/auth/session";
 
 export async function GET() {
     return handleRoute(async () => {
@@ -61,7 +61,6 @@ export async function GET() {
 export async function POST(request: Request) {
     return handleRoute(async () => {
         const user = await requireUser();
-        requireRole(user, ["admin"]);
         const input = await parseBody(request, workspaceCreateSchema);
 
         const [workspace] = await db
