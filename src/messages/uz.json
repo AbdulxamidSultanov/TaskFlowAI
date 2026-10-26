@@ -605,7 +605,11 @@
         "legend": "Loyihalar",
         "newEvent": "Yangi tadbir",
         "noEvents": "Bu kunda tadbirlar yo'q",
-        "title": "Kalendar"
+        "title": "Kalendar",
+        "tasks": "Vazifalar",
+        "events": "Tadbirlar",
+        "noTasks": "Bu kunda vazifalar yo‘q",
+        "newTask": "Yangi vazifa"
     },
     "eventForm": {
         "allDay": "Kun bo'yi",

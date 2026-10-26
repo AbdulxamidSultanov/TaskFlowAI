@@ -8,11 +8,14 @@ import {
     Clock,
     MapPin,
     Plus,
+    SquareCheck,
 } from "lucide-react";
 import {useMemo, useState} from "react";
 
 import {EventFormDialog} from "@/components/calendar/event-form-dialog";
-import {Badge} from "@/components/ui/badge";
+import {TaskDetailDialog} from "@/components/tasks/task-detail-dialog";
+import {TaskFormDialog} from "@/components/tasks/task-form-dialog";
+import {Badge, statusTone} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Select} from "@/components/ui/input";
 import {PageHeader} from "@/components/ui/layout";
@@ -20,8 +23,9 @@ import {useWorkspace} from "@/components/workspace/workspace-provider";
 import {
     useGetCalendarEventsQuery,
     useGetProjectsQuery,
+    useGetTasksQuery,
 } from "@/lib/redux/api";
-import type {CalendarEvent} from "@/lib/redux/types";
+import type {CalendarEvent, TaskDetail, TaskListItem} from "@/lib/redux/types";
 import {
     addMonths,
     cn,
@@ -29,6 +33,7 @@ import {
     formatTime,
     monthMatrix,
     sameDay,
+    toDateInputValue,
 } from "@/lib/utils";
 
 const weekDayDate = new Date(2024, 0, 1); // Monday
@@ -36,6 +41,7 @@ const weekDayDate = new Date(2024, 0, 1); // Monday
 export default function CalendarPage() {
     const t = useTranslations("calendarPage");
     const tCommon = useTranslations("common");
+    const tStatus = useTranslations("status");
     const locale = useLocale();
     const {workspace, canEdit} = useWorkspace();
 
@@ -45,6 +51,11 @@ export default function CalendarPage() {
     const [formOpen, setFormOpen] = useState(false);
     const [editing, setEditing] = useState<CalendarEvent | null>(null);
     const [defaultDate, setDefaultDate] = useState<Date | undefined>();
+
+    const [taskFormOpen, setTaskFormOpen] = useState(false);
+    const [editingTask, setEditingTask] = useState<TaskDetail | null>(null);
+    const [defaultDueDate, setDefaultDueDate] = useState<string | undefined>();
+    const [detailTaskId, setDetailTaskId] = useState<string | null>(null);
 
     const days = useMemo(() => monthMatrix(current), [current]);
     const rangeStart = days[0];
@@ -69,6 +80,13 @@ export default function CalendarPage() {
 
     const {data: projectsData} = useGetProjectsQuery({
         workspaceId: workspace.id,
+        pageSize: 100,
+    });
+    const {data: tasksData, isLoading: tasksLoading} = useGetTasksQuery({
+        workspaceId: workspace.id,
+        projectId: projectId || undefined,
+        dueFrom: rangeFrom,
+        dueTo: rangeTo,
         pageSize: 100,
     });
     const {data: events, isLoading} = useGetCalendarEventsQuery({
@@ -97,6 +115,19 @@ export default function CalendarPage() {
         return map;
     }, [events]);
 
+    const tasksByDay = useMemo(() => {
+        const map = new Map<string, TaskListItem[]>();
+        for (const task of tasksData?.items ?? []) {
+            if (!task.dueDate) continue;
+            const date = new Date(task.dueDate);
+            const key = `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
+            const list = map.get(key) ?? [];
+            list.push(task);
+            map.set(key, list);
+        }
+        return map;
+    }, [tasksData]);
+
     const projectById = useMemo(() => {
         const map = new Map<string, {name: string; color: string}>();
         for (const project of projectsData?.items ?? []) {
@@ -112,6 +143,7 @@ export default function CalendarPage() {
         `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
 
     const selectedEvents = eventsByDay.get(dayKey(selectedDay)) ?? [];
+    const selectedTasks = tasksByDay.get(dayKey(selectedDay)) ?? [];
 
     const openCreate = (date?: Date) => {
         setEditing(null);
@@ -122,6 +154,18 @@ export default function CalendarPage() {
     const openEdit = (event: CalendarEvent) => {
         setEditing(event);
         setFormOpen(true);
+    };
+
+    const openTaskCreate = (date?: Date) => {
+        setEditingTask(null);
+        setDefaultDueDate(toDateInputValue(date ?? selectedDay));
+        setTaskFormOpen(true);
+    };
+
+    const openTaskEdit = (task: TaskDetail) => {
+        setDetailTaskId(null);
+        setEditingTask(task);
+        setTaskFormOpen(true);
     };
 
     const weekDays = Array.from({length: 7}, (_, index) => {
@@ -229,9 +273,13 @@ export default function CalendarPage() {
                             const isSelected = sameDay(day, selectedDay);
                             const dayEvents =
                                 eventsByDay.get(dayKey(day)) ?? [];
+                            const dayTasks = tasksByDay.get(dayKey(day)) ?? [];
+                            const eventLimit = dayTasks.length > 0 ? 2 : 3;
                             const hiddenItems =
+                                dayTasks.length +
                                 dayEvents.length -
-                                Math.min(dayEvents.length, 3);
+                                Math.min(dayTasks.length, 2) -
+                                Math.min(dayEvents.length, eventLimit);
                             return (
                                 <div
                                     key={day.toISOString()}
@@ -272,8 +320,41 @@ export default function CalendarPage() {
                                     </div>
 
                                     <div className="space-y-0.5">
+                                        {dayTasks.slice(0, 2).map((task) => (
+                                            <button
+                                                key={task.id}
+                                                type="button"
+                                                onClick={(clickEvent) => {
+                                                    clickEvent.stopPropagation();
+                                                    setDetailTaskId(task.id);
+                                                }}
+                                                className="flex w-full items-center gap-1 overflow-hidden rounded px-1 py-0.5 text-left text-[10px] font-medium text-text-secondary hover:bg-surface-hover"
+                                                title={`${task.title} · ${projectById.get(task.projectId)?.name ?? ""}`}
+                                            >
+                                                <span
+                                                    className="size-1.5 shrink-0 rounded-full"
+                                                    style={{
+                                                        backgroundColor:
+                                                            projectById.get(
+                                                                task.projectId,
+                                                            )?.color ??
+                                                            "#4F46E5",
+                                                    }}
+                                                />
+                                                <span
+                                                    className={cn(
+                                                        "truncate",
+                                                        task.status ===
+                                                            "completed" &&
+                                                            "line-through opacity-60",
+                                                    )}
+                                                >
+                                                    {task.title}
+                                                </span>
+                                            </button>
+                                        ))}
                                         {dayEvents
-                                            .slice(0, 3)
+                                            .slice(0, eventLimit)
                                             .map((event) => (
                                                 <button
                                                     key={event.id}
@@ -330,7 +411,103 @@ export default function CalendarPage() {
                         <div className="flex items-start justify-between gap-2">
                             <div>
                                 <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
-                                    {t("agenda")}
+                                    {t("tasks")}
+                                </p>
+                                <h2 className="mt-1 text-base font-semibold capitalize text-text-primary">
+                                    {formatDate(selectedDay, locale, {
+                                        weekday: "long",
+                                        day: "numeric",
+                                        month: "long",
+                                    })}
+                                </h2>
+                            </div>
+                            {canEdit ? (
+                                <Button
+                                    size="icon"
+                                    variant="outline"
+                                    aria-label={t("newTask")}
+                                    onClick={() => openTaskCreate(selectedDay)}
+                                >
+                                    <Plus size={15} />
+                                </Button>
+                            ) : null}
+                        </div>
+
+                        <div className="scroll-area mt-3 max-h-[360px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                            {tasksLoading ? (
+                                <div className="space-y-2">
+                                    <div className="h-14 animate-pulse rounded-lg bg-surface-hover" />
+                                    <div className="h-14 animate-pulse rounded-lg bg-surface-hover" />
+                                </div>
+                            ) : selectedTasks.length === 0 ? (
+                                <div className="rounded-xl border border-dashed border-border px-3 py-8 text-center">
+                                    <SquareCheck
+                                        size={20}
+                                        className="mx-auto mb-2 text-text-muted"
+                                    />
+                                    <p className="text-xs text-text-muted">
+                                        {t("noTasks")}
+                                    </p>
+                                </div>
+                            ) : (
+                                selectedTasks.map((task) => (
+                                    <button
+                                        key={task.id}
+                                        type="button"
+                                        onClick={() =>
+                                            setDetailTaskId(task.id)
+                                        }
+                                        className="w-full rounded-xl border border-border bg-surface-elevated/50 p-2.5 text-left transition-colors hover:bg-surface-hover"
+                                    >
+                                        <div className="flex items-start gap-2">
+                                            <span
+                                                className="mt-1 size-2 shrink-0 rounded-full"
+                                                style={{
+                                                    backgroundColor:
+                                                        projectById.get(
+                                                            task.projectId,
+                                                        )?.color ??
+                                                        "#4F46E5",
+                                                }}
+                                            />
+                                            <div className="min-w-0 flex-1">
+                                                <p
+                                                    className={cn(
+                                                        "truncate text-xs font-semibold text-text-primary",
+                                                        task.status ===
+                                                            "completed" &&
+                                                            "line-through opacity-60",
+                                                    )}
+                                                >
+                                                    {task.title}
+                                                </p>
+                                                <p className="mt-0.5 flex items-center gap-1 text-[10px] text-text-muted">
+                                                    <SquareCheck size={10} />
+                                                    {projectById.get(
+                                                        task.projectId,
+                                                    )?.name ?? "—"}
+                                                </p>
+                                                <Badge
+                                                    tone={
+                                                        statusTone[task.status]
+                                                    }
+                                                    className="mt-1.5"
+                                                >
+                                                    {tStatus(task.status)}
+                                                </Badge>
+                                            </div>
+                                        </div>
+                                    </button>
+                                ))
+                            )}
+                        </div>
+                    </div>
+
+                    <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                        <div className="flex items-start justify-between gap-2">
+                            <div>
+                                <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                                    {t("events")}
                                 </p>
                                 <h2 className="mt-1 text-base font-semibold capitalize text-text-primary">
                                     {formatDate(selectedDay, locale, {
@@ -463,6 +640,30 @@ export default function CalendarPage() {
                 defaultDate={defaultDate}
             />
 
+            <TaskFormDialog
+                open={taskFormOpen}
+                onClose={() => {
+                    setTaskFormOpen(false);
+                    setEditingTask(null);
+                }}
+                task={editingTask}
+                defaultDueDate={defaultDueDate}
+                onSaved={(task) => setDetailTaskId(task.id)}
+            />
+
+            <TaskDetailDialog
+                taskId={detailTaskId}
+                open={Boolean(detailTaskId)}
+                onClose={() => {
+                    setDetailTaskId(null);
+                    setEditingTask(null);
+                }}
+                onEdit={openTaskEdit}
+                onDeleted={() => {
+                    setDetailTaskId(null);
+                    setEditingTask(null);
+                }}
+            />
         </div>
     );
 }

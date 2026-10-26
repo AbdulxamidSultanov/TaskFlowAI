@@ -45,6 +45,7 @@ export function TaskFormDialog({
     task = null,
     defaultStatus,
     defaultProjectId,
+    defaultDueDate,
     onSaved,
 }: {
     open: boolean;
@@ -52,6 +53,7 @@ export function TaskFormDialog({
     task?: EditableTask | TaskDetail | TaskListItem | null;
     defaultStatus?: (typeof taskStatuses)[number];
     defaultProjectId?: string;
+    defaultDueDate?: string;
     onSaved?: (task: TaskDetail) => void;
 }) {
     const t = useTranslations("taskForm");
@@ -120,7 +122,7 @@ export function TaskFormDialog({
             setPriority("medium");
             setAssigneeId("");
             setStartDate("");
-            setDueDate("");
+            setDueDate(defaultDueDate ?? "");
             setEstimate("");
             setTagIds([]);
         }
