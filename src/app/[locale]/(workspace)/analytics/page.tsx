@@ -208,13 +208,13 @@ export default function AnalyticsPage() {
                 />
             </div>
 
-            <div className="grid gap-4 lg:grid-cols-3">
+            <div className="grid min-w-0 gap-4 lg:grid-cols-3">
                 <Card>
                     <CardHeader
                         title={t("completionRate")}
                         description={t("completionDescription")}
                     />
-                    <div className="flex items-center gap-5">
+                    <div className="flex flex-col items-center gap-4 xl:flex-row xl:gap-5">
                         <div
                             className="relative flex size-32 shrink-0 items-center justify-center rounded-full"
                             style={{
@@ -230,7 +230,7 @@ export default function AnalyticsPage() {
                                 </span>
                             </div>
                         </div>
-                        <div className="min-w-0 flex-1 space-y-2">
+                        <div className="w-full min-w-0 space-y-2 xl:flex-1">
                             <div className="flex justify-between text-xs">
                                 <span className="text-text-secondary">
                                     {t("completed")}
@@ -261,7 +261,7 @@ export default function AnalyticsPage() {
 
                 <Card>
                     <CardHeader title={t("byStatus")} />
-                    <div className="scroll-area max-h-[340px] space-y-2.5 overflow-y-auto overscroll-contain pr-1">
+                    <div className="scroll-area max-h-[340px] space-y-2.5 overflow-y-auto pr-1">
                         {(analytics?.byStatus ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noData")}
@@ -356,13 +356,13 @@ export default function AnalyticsPage() {
                 </Card>
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-2">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-2">
                 <Card>
                     <CardHeader
                         title={t("byDepartment")}
                         description={t("byDepartmentDescription")}
                     />
-                    <div className="scroll-area max-h-[340px] space-y-3 overflow-y-auto overscroll-contain pr-1">
+                    <div className="scroll-area max-h-[340px] space-y-3 overflow-y-auto pr-1">
                         {(analytics?.byDepartment ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noData")}
@@ -426,7 +426,7 @@ export default function AnalyticsPage() {
                             </Link>
                         }
                     />
-                    <div className="scroll-area max-h-[340px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                    <div className="scroll-area max-h-[340px] space-y-2 overflow-y-auto pr-1">
                         {(analytics?.upcoming ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noUpcoming")}
@@ -471,7 +471,7 @@ export default function AnalyticsPage() {
                         {t("noCompleted")}
                     </p>
                 ) : (
-                    <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                    <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-3">
                         {(analytics?.recentlyCompleted ?? []).map((item) => (
                             <Link
                                 key={item.id}

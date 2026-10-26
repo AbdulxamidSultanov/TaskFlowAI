@@ -203,7 +203,7 @@ function ProjectsPageContent() {
                 />
             ) : (
                 <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
-                    <div className="scroll-area grid max-h-[min(72dvh,860px)] gap-3 overflow-y-auto overscroll-contain pr-1 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="scroll-area grid max-h-[min(72dvh,860px)] gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
                     {projects.map((project) => {
                         const overdue =
                             project.dueDate &&
@@ -264,7 +264,7 @@ function ProjectsPageContent() {
                                 </Link>
 
                                 <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                                    <div className="flex items-center gap-1.5">
+                                    <div className="flex min-w-0 items-center gap-1.5">
                                         {project.owner ? (
                                             <>
                                                 <Avatar
@@ -286,7 +286,7 @@ function ProjectsPageContent() {
                                         )}
                                     </div>
 
-                                    <div className="flex items-center gap-0.5">
+                                    <div className="flex shrink-0 items-center gap-0.5">
                                         {overdue ? (
                                             <Badge tone="danger">
                                                 {tCommon("overdue")}

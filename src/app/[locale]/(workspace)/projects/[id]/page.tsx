@@ -231,7 +231,7 @@ export default function ProjectDetailPage() {
                         />
                     </div>
                 ) : (
-                    <div className="scroll-area max-h-[min(60dvh,560px)] divide-y divide-border overflow-y-auto overscroll-contain">
+                    <div className="scroll-area max-h-[min(60dvh,560px)] divide-y divide-border overflow-y-auto">
                         {project.tasks.map((task) => {
                             const overdue = isOverdue(
                                 task.dueDate,

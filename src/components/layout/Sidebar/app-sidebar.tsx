@@ -125,7 +125,7 @@ export function AppSidebar({
 
             <aside
                 className={cn(
-                    "fixed inset-y-0 left-0 z-50 flex h-dvh w-64 shrink-0 flex-col border-r border-border bg-sidebar transition-transform duration-200 md:translate-x-0",
+                    "fixed inset-y-0 left-0 z-50 flex h-[100svh] max-h-[100svh] w-64 shrink-0 flex-col overflow-hidden border-r border-border bg-sidebar transition-transform duration-200 md:translate-x-0",
                     open ? "translate-x-0" : "-translate-x-full",
                 )}
                 aria-label={t("heading")}
@@ -182,7 +182,7 @@ export function AppSidebar({
                             <p className="px-3 pb-1 pt-2 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
                                 {t("workspaces")}
                             </p>
-                            <div className="scroll-area max-h-56 overflow-y-auto overscroll-contain p-1">
+                            <div className="scroll-area max-h-56 overflow-y-auto p-1">
                                 {workspaces.map((item) => (
                                     <button
                                         key={item.id}
@@ -231,7 +231,7 @@ export function AppSidebar({
                     ) : null}
                 </div>
 
-                <div className="scroll-area mt-4 min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
+                <div className="scroll-area mt-4 min-h-0 flex-1 overflow-y-auto px-3 pb-3">
                     <p className="px-2 pb-1 text-[10px] font-semibold uppercase tracking-[0.14em] text-text-muted">
                         {t("heading")}
                     </p>
@@ -283,7 +283,7 @@ export function AppSidebar({
                             {tCommon("viewAll")}
                         </Link>
                     </div>
-                    <div className="scroll-area mt-1.5 max-h-64 space-y-0.5 overflow-y-auto overscroll-contain rounded-xl border border-border bg-surface p-1">
+                    <div className="scroll-area mt-1.5 max-h-64 space-y-0.5 overflow-y-auto rounded-xl border border-border bg-surface p-1">
                         {(projectsData?.items ?? []).map((project) => (
                             <Link
                                 key={project.id}

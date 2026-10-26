@@ -519,26 +519,26 @@ function TasksPageContent() {
                 </div>
             ) : (
                 <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                    <div className="scroll-area max-h-[min(65dvh,680px)] overflow-auto overscroll-contain">
+                    <div className="scroll-area max-h-[min(65dvh,680px)] overflow-auto">
                         <table className="w-full min-w-[900px] border-collapse text-sm">
                             <thead className="sticky top-0 z-10 bg-surface-elevated shadow-[0_1px_0_var(--border)]">
                                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-muted">
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[300px] px-4 py-3 font-medium">
                                         {t("tableTaskName")}
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[130px] px-4 py-3 font-medium">
                                         {t("tableProject")}
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[90px] px-4 py-3 font-medium">
                                         {t("tablePriority")}
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[130px] px-4 py-3 font-medium">
                                         {t("tableStatus")}
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[110px] px-4 py-3 font-medium">
                                         {t("tableDueDate")}
                                     </th>
-                                    <th className="px-4 py-3 font-medium">
+                                    <th className="w-[150px] px-4 py-3 font-medium">
                                         {t("tableAssignee")}
                                     </th>
                                 </tr>
@@ -563,7 +563,7 @@ function TasksPageContent() {
                                             }
                                             className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/70"
                                         >
-                                            <td className="max-w-[320px] px-4 py-3">
+                                            <td className="max-w-[300px] px-4 py-3">
                                                 <p className="truncate font-medium text-text-primary">
                                                     {task.title}
                                                 </p>
