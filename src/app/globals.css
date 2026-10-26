@@ -107,3 +107,34 @@ body {
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
 
+/*
+ * Consistent, always visible scrollbar for bounded lists and menus. Without it
+ * the native overlay scrollbar disappears after a moment and users cannot tell
+ * that a section contains more content.
+ */
+.scroll-area {
+  scrollbar-width: thin;
+  scrollbar-color: var(--text-muted) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scroll-area::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.scroll-area::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.scroll-area::-webkit-scrollbar-thumb {
+  background: var(--text-muted);
+  border: 2px solid transparent;
+  border-radius: 9999px;
+  background-clip: padding-box;
+}
+
+.scroll-area::-webkit-scrollbar-thumb:hover {
+  background: var(--text-secondary);
+  background-clip: padding-box;
+}

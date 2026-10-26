@@ -261,7 +261,7 @@ export default function AnalyticsPage() {
 
                 <Card>
                     <CardHeader title={t("byStatus")} />
-                    <div className="space-y-2.5">
+                    <div className="scroll-area max-h-[340px] space-y-2.5 overflow-y-auto overscroll-contain pr-1">
                         {(analytics?.byStatus ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noData")}
@@ -362,7 +362,7 @@ export default function AnalyticsPage() {
                         title={t("byDepartment")}
                         description={t("byDepartmentDescription")}
                     />
-                    <div className="space-y-3">
+                    <div className="scroll-area max-h-[340px] space-y-3 overflow-y-auto overscroll-contain pr-1">
                         {(analytics?.byDepartment ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noData")}
@@ -426,7 +426,7 @@ export default function AnalyticsPage() {
                             </Link>
                         }
                     />
-                    <div className="space-y-2">
+                    <div className="scroll-area max-h-[340px] space-y-2 overflow-y-auto overscroll-contain pr-1">
                         {(analytics?.upcoming ?? []).length === 0 ? (
                             <p className="text-sm text-text-muted">
                                 {t("noUpcoming")}

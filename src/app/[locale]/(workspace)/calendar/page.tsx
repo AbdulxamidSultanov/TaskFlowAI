@@ -352,7 +352,7 @@ export default function CalendarPage() {
                             ) : null}
                         </div>
 
-                        <div className="mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
+                        <div className="scroll-area mt-3 max-h-[320px] space-y-2 overflow-y-auto overscroll-contain pr-1">
                             {isLoading ? (
                                 <div className="space-y-2">
                                     <div className="h-14 animate-pulse rounded-lg bg-surface-hover" />

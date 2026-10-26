@@ -248,7 +248,7 @@ export default function TeamPage() {
                     />
                 ) : (
                     <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                        <div className="divide-y divide-border">
+                        <div className="scroll-area max-h-[min(65dvh,640px)] divide-y divide-border overflow-y-auto overscroll-contain">
                             {(members ?? []).map((member) => {
                                 const isSelf = member.user.id === user.id;
                                 return (
@@ -412,9 +412,9 @@ export default function TeamPage() {
                         />
                     ) : (
                         <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                            <div className="overflow-x-auto">
+                            <div className="scroll-area max-h-[min(65dvh,640px)] overflow-auto overscroll-contain">
                                 <table className="w-full min-w-[760px] border-collapse text-sm">
-                                    <thead className="bg-surface-elevated">
+                                    <thead className="sticky top-0 z-10 bg-surface-elevated shadow-[0_1px_0_var(--border)]">
                                         <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-muted">
                                             <th className="px-4 py-3 font-medium">
                                                 {t("user")}
@@ -603,7 +603,7 @@ export default function TeamPage() {
                     />
                 ) : (
                     <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
-                        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                        <div className="scroll-area grid max-h-[min(65dvh,640px)] gap-3 overflow-y-auto overscroll-contain pr-1 md:grid-cols-2 xl:grid-cols-3">
                         {(departments ?? []).map((department) => (
                             <div
                                 key={department.id}
