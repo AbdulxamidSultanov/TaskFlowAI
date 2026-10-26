@@ -84,7 +84,7 @@ export async function POST(request: Request) {
             role: "owner",
         });
 
-        await createSession(user.id, request);
+        await createSession(user.id);
 
         return created(await getAuthUser());
     });

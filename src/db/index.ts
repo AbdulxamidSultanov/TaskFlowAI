@@ -1,35 +1,28 @@
-import { mkdirSync } from "node:fs";
-import { dirname, join } from "node:path";
+import {mkdirSync} from "node:fs";
+import {dirname, join} from "node:path";
 
-import Database from "better-sqlite3";
-import { drizzle } from "drizzle-orm/better-sqlite3";
+import {createClient} from "@libsql/client";
+import {drizzle} from "drizzle-orm/libsql";
 
 import * as schema from "./schema";
 
-const databasePath =
-    process.env.DATABASE_PATH ??
-    join(process.cwd(), ".data", "taskflow.db");
+/**
+ * Production uses a remote Turso database so every Vercel serverless function
+ * sees the same data. Local development falls back to a SQLite file.
+ */
+function resolveDatabaseUrl() {
+    if (process.env.DATABASE_URL) return process.env.DATABASE_URL;
 
-mkdirSync(dirname(databasePath), {recursive: true});
-
-const globalForDb = globalThis as unknown as {
-    __taskflowSqlite?: Database.Database;
-};
-
-const sqlite =
-    globalForDb.__taskflowSqlite ??
-    new Database(databasePath, {
-        fileMustExist: false,
-    });
-
-sqlite.pragma("journal_mode = WAL");
-sqlite.pragma("foreign_keys = ON");
-sqlite.pragma("busy_timeout = 5000");
-
-if (process.env.NODE_ENV !== "production") {
-    globalForDb.__taskflowSqlite = sqlite;
+    const localPath = join(process.cwd(), ".data", "taskflow.db");
+    mkdirSync(dirname(localPath), {recursive: true});
+    return `file:${localPath}`;
 }
 
-export const db = drizzle(sqlite, {schema});
-export {sqlite};
+const client = createClient({
+    url: resolveDatabaseUrl(),
+    authToken: process.env.DATABASE_AUTH_TOKEN,
+});
+
+export const db = drizzle(client, {schema});
+export {client};
 export type Db = typeof db;
