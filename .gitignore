@@ -44,3 +44,7 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .idea
+
+# bundled sqlite sidecar files
+data/*.db-shm
+data/*.db-wal
