@@ -227,8 +227,8 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                 />
             </div>
 
-            <div className="grid gap-4 xl:grid-cols-3">
-                <div className="space-y-4 xl:col-span-2">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-3">
+                <div className="min-w-0 space-y-4 xl:col-span-2">
                     <Card>
                         <CardHeader
                             title={t("todaysTasks")}
@@ -256,7 +256,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 {t("noTasks")}
                             </p>
                         ) : (
-                            <div className="scroll-area max-h-[420px] divide-y divide-border overflow-y-auto overscroll-contain pr-1">
+                            <div className="scroll-area max-h-[420px] divide-y divide-border overflow-y-auto pr-1">
                                 {(tasksData?.items ?? []).map((task) => {
                                     const assignee = task.assigneeId
                                         ? memberById.get(task.assigneeId)
@@ -283,9 +283,9 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                                     {task.title}
                                                 </p>
                                                 <p className="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-text-muted">
-                                                    <span className="inline-flex items-center gap-1.5">
+                                                    <span className="inline-flex min-w-0 max-w-full items-center gap-1.5">
                                                         <span
-                                                            className="size-1.5 rounded-full"
+                                                            className="size-1.5 shrink-0 rounded-full"
                                                             style={{
                                                                 backgroundColor:
                                                                     projectById.get(
@@ -294,12 +294,16 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                                                     "#94A3B8",
                                                             }}
                                                         />
-                                                        {projectById.get(
-                                                            task.projectId,
-                                                        )?.name ?? "—"}
+                                                        <span className="truncate">
+                                                            {projectById.get(
+                                                                task.projectId,
+                                                            )?.name ?? "—"}
+                                                        </span>
                                                     </span>
-                                                    <span>·</span>
-                                                    <span>
+                                                    <span className="shrink-0">
+                                                        ·
+                                                    </span>
+                                                    <span className="shrink-0">
                                                         {formatDate(
                                                             task.dueDate,
                                                             locale,
@@ -309,13 +313,13 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                             </div>
                                             <Badge
                                                 tone={statusTone[task.status]}
-                                                className="hidden sm:inline-flex"
+                                                className="max-sm:hidden"
                                             >
                                                 {tStatus(task.status)}
                                             </Badge>
                                             <Badge
                                                 tone={priorityTone[task.priority]}
-                                                className="hidden md:inline-flex"
+                                                className="max-md:hidden"
                                             >
                                                 {tPriority(task.priority)}
                                             </Badge>
@@ -351,7 +355,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 </Link>
                             }
                         />
-                        <div className="scroll-area max-h-[320px] space-y-3 overflow-y-auto overscroll-contain pr-1">
+                        <div className="scroll-area max-h-[320px] space-y-3 overflow-y-auto pr-1">
                             {(analytics?.byDepartment ?? []).map((department) => {
                                 const percent =
                                     department.total > 0
@@ -397,7 +401,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                         </div>
                     </Card>
 
-                    <div className="grid gap-4 md:grid-cols-2">
+                    <div className="grid min-w-0 gap-4 md:grid-cols-2">
                         <Card>
                             <CardHeader
                                 title={t("recentlyCompleted")}
@@ -453,7 +457,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                     </Link>
                                 }
                             />
-                            <div className="scroll-area max-h-[280px] space-y-2.5 overflow-y-auto overscroll-contain pr-1">
+                            <div className="scroll-area max-h-[280px] space-y-2.5 overflow-y-auto pr-1">
                                 {todayEvents.length === 0 ? (
                                     <p className="text-sm text-text-muted">
                                         {t("scheduleEmpty")}
@@ -494,7 +498,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                     </div>
                 </div>
 
-                <div className="space-y-4">
+                <div className="min-w-0 space-y-4">
                     <div className="overflow-hidden rounded-2xl border border-accent/20 bg-gradient-to-br from-indigo-600 to-violet-600 p-5 text-white shadow-sm">
                         <div className="flex items-center justify-between gap-2">
                             <span className="inline-flex items-center gap-1.5 rounded-full bg-white/15 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide backdrop-blur">
@@ -570,7 +574,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 />
                             }
                         />
-                        <div className="scroll-area max-h-[280px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                        <div className="scroll-area max-h-[280px] space-y-2 overflow-y-auto pr-1">
                             {(analytics?.upcoming ?? []).length === 0 ? (
                                 <p className="text-sm text-text-muted">
                                     {t("noUpcoming")}

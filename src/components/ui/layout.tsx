@@ -30,7 +30,7 @@ export function PageHeader({
                         {eyebrow}
                     </p>
                 ) : null}
-                <h1 className="text-2xl font-semibold tracking-tight text-text-primary sm:text-[28px]">
+                <h1 className="break-words text-2xl font-semibold tracking-tight text-text-primary sm:text-[28px]">
                     {title}
                 </h1>
                 {description ? (
@@ -58,7 +58,7 @@ export function Card({
     return (
         <div
             className={cn(
-                "rounded-2xl border border-border bg-surface p-5 shadow-sm",
+                "min-w-0 rounded-2xl border border-border bg-surface p-5 shadow-sm",
                 className,
             )}
         >
@@ -122,15 +122,15 @@ export function StatCard({
     }[tone];
 
     return (
-        <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+        <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 shadow-sm">
             <div className="flex items-start justify-between gap-3">
-                <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
+                <p className="min-w-0 break-words text-xs font-medium uppercase tracking-wide text-text-muted">
                     {label}
                 </p>
                 {icon ? (
                     <span
                         className={cn(
-                            "flex size-9 items-center justify-center rounded-xl",
+                            "flex size-9 shrink-0 items-center justify-center rounded-xl",
                             toneClasses,
                         )}
                     >

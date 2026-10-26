@@ -19,7 +19,7 @@ export function Tabs<T extends string>({
         <div
             role="tablist"
             className={cn(
-                "flex gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1",
+                "flex w-full min-w-0 gap-1 overflow-x-auto rounded-xl border border-border bg-surface p-1",
                 className,
             )}
         >

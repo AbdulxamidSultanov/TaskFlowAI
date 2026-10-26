@@ -116,6 +116,8 @@ body {
   scrollbar-width: thin;
   scrollbar-color: var(--text-muted) transparent;
   scrollbar-gutter: stable;
+  /* Let wheel/touch scrolling chain to the page at the list boundaries. */
+  overscroll-behavior-y: auto;
 }
 
 .scroll-area::-webkit-scrollbar {

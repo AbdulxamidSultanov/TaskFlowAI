@@ -210,8 +210,8 @@ export default function CalendarPage() {
                 }
             />
 
-            <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
-                <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
+            <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+                <div className="min-w-0 overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
                     <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
                         <div className="flex items-center gap-2">
                             <Button
@@ -406,8 +406,8 @@ export default function CalendarPage() {
                     </div>
                 </div>
 
-                <div className="space-y-4">
-                    <div className="rounded-2xl border border-border bg-surface p-4 shadow-sm">
+                <div className="min-w-0 space-y-4">
+                    <div className="min-w-0 rounded-2xl border border-border bg-surface p-4 shadow-sm">
                         <div className="flex items-start justify-between gap-2">
                             <div>
                                 <p className="text-xs font-medium uppercase tracking-wide text-text-muted">
@@ -433,7 +433,7 @@ export default function CalendarPage() {
                             ) : null}
                         </div>
 
-                        <div className="scroll-area mt-3 max-h-[360px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                        <div className="scroll-area mt-3 max-h-[360px] space-y-2 overflow-y-auto pr-1">
                             {tasksLoading ? (
                                 <div className="space-y-2">
                                     <div className="h-14 animate-pulse rounded-lg bg-surface-hover" />
@@ -529,7 +529,7 @@ export default function CalendarPage() {
                             ) : null}
                         </div>
 
-                        <div className="scroll-area mt-3 max-h-[320px] space-y-2 overflow-y-auto overscroll-contain pr-1">
+                        <div className="scroll-area mt-3 max-h-[320px] space-y-2 overflow-y-auto pr-1">
                             {isLoading ? (
                                 <div className="space-y-2">
                                     <div className="h-14 animate-pulse rounded-lg bg-surface-hover" />
