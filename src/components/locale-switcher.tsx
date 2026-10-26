@@ -4,13 +4,7 @@ import {useLocale} from "next-intl";
 import {useTransition} from "react";
 
 import {usePathname, useRouter} from "@/i18n/navigation";
-import {routing} from "@/i18n/routing";
-
-const languageNames = {
-    ru: "Русский",
-    uz: "O‘zbekcha",
-    en: "English",
-} as const;
+import {languageNames, routing} from "@/i18n/routing";
 
 type Locale = (typeof routing.locales)[number];
 

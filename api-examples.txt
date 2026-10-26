@@ -1,0 +1,720 @@
+TASKFLOW AI — ПРИМЕРЫ ВЫЗОВОВ API
+=================================
+
+Базовый URL для локальной разработки:
+  http://localhost:3000
+
+Cookie-сессия хранится в HttpOnly cookie `taskflow_session`.
+Для curl используйте один и тот же cookie-jar: -c (сохранить) и -b (отправить).
+
+Все ответы API имеют формат:
+  {"data": ...}
+
+Ошибки:
+  {"error":{"code":"...","message":"...","details":...}}
+
+
+0. ПЕРЕМЕННЫЕ ДЛЯ ПРИМЕРОВ
+-------------------------
+
+В терминале:
+
+  export BASE_URL=http://localhost:3000
+  export COOKIE_JAR=/tmp/taskflow-cookies.txt
+
+  export WORKSPACE_ID=ws-taskflow-hq
+  export DEPARTMENT_ID=dept-engineering
+  export USER_ID=user-engineering-2
+  export PROJECT_ID=project-engineering-1
+  export TASK_ID=task-engineering-1
+  export EVENT_ID=event-engineering-1
+  export NOTIFICATION_ID=notification-engineering-1
+  export AI_CONVERSATION_ID=ai-conversation-engineering
+  export TAG_ID=tag-engineering
+
+Демо-доступ:
+  email:    demo@taskflow.ai
+  password: Demo1234!
+
+Сотрудники отделов:
+  любой seeded email + Password123!
+  например: aziz.karimov@taskflow.ai
+
+
+1. HEALTH
+---------
+
+GET /api/health
+
+  curl -s "$BASE_URL/api/health"
+
+
+2. AUTH
+-------
+
+### Регистрация (создаёт пользователя, сессию и добавляет в первый workspace)
+
+POST /api/auth/register
+
+  curl -s -c "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "name": "New Teammate",
+      "email": "new.teammate@taskflow.ai",
+      "password": "Password123!",
+      "departmentId": "dept-design"
+    }' \
+    "$BASE_URL/api/auth/register"
+
+### Вход
+
+POST /api/auth/login
+
+  curl -s -c "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "email": "demo@taskflow.ai",
+      "password": "Demo1234!"
+    }' \
+    "$BASE_URL/api/auth/login"
+
+### Текущий пользователь + настройки + workspace-членства
+
+GET /api/auth/me
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/auth/me"
+
+### Выход
+
+POST /api/auth/logout
+
+  curl -s -b "$COOKIE_JAR" -X POST "$BASE_URL/api/auth/logout"
+
+
+3. DEPARTMENTS
+--------------
+
+### Список отделов + количество пользователей/проектов/задач
+
+GET /api/departments
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/departments"
+
+### Один отдел + участники + counts
+
+GET /api/departments/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/departments/$DEPARTMENT_ID"
+
+### Создать отдел (admin или manager)
+
+POST /api/departments
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "name": "Customer Success",
+      "slug": "customer-success",
+      "description": "Onboarding and customer health",
+      "color": "#14B8A6"
+    }' \
+    "$BASE_URL/api/departments"
+
+### Обновить отдел
+
+PATCH /api/departments/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "description": "Platform, product engineering and infrastructure"
+    }' \
+    "$BASE_URL/api/departments/$DEPARTMENT_ID"
+
+### Удалить пустой отдел (admin)
+
+DELETE /api/departments/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/departments/<EMPTY_DEPARTMENT_ID>"
+
+
+4. USERS
+--------
+
+### Список пользователей
+
+GET /api/users?departmentId=...&role=...&search=...&page=1&pageSize=20
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/users?departmentId=$DEPARTMENT_ID&pageSize=10"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/users?search=aziz&role=manager"
+
+### Один пользователь + статистика
+
+GET /api/users/:id
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/users/$USER_ID"
+
+### Создать пользователя (admin или manager)
+
+POST /api/users
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "name": "Nodira Karimova",
+      "email": "nodira.karimova@taskflow.ai",
+      "password": "Password123!",
+      "role": "member",
+      "departmentId": "dept-design",
+      "jobTitle": "Product Designer",
+      "timezone": "Asia/Tashkent"
+    }' \
+    "$BASE_URL/api/users"
+
+### Обновить пользователя
+
+PATCH /api/users/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "jobTitle": "Senior Frontend Engineer",
+      "timezone": "Asia/Tashkent"
+    }' \
+    "$BASE_URL/api/users/$USER_ID"
+
+### Удалить пользователя (admin)
+
+DELETE /api/users/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/users/<USER_ID>"
+
+
+5. WORKSPACES
+-------------
+
+### Список доступных workspace
+
+GET /api/workspaces
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/workspaces"
+
+### Один workspace + участники + проекты + counts
+
+GET /api/workspaces/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/workspaces/$WORKSPACE_ID"
+
+### Создать workspace (admin или manager)
+
+POST /api/workspaces
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "name": "TaskFlow Lab",
+      "slug": "taskflow-lab",
+      "plan": "pro"
+    }' \
+    "$BASE_URL/api/workspaces"
+
+### Обновить workspace
+
+PATCH /api/workspaces/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "plan": "business"
+    }' \
+    "$BASE_URL/api/workspaces/$WORKSPACE_ID"
+
+### Удалить workspace (owner или admin)
+
+DELETE /api/workspaces/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/workspaces/<WORKSPACE_ID>"
+
+### Участники workspace
+
+GET /api/workspaces/:id/members
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/workspaces/$WORKSPACE_ID/members"
+
+### Добавить участника
+
+POST /api/workspaces/:id/members
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "userId": "user-design-2",
+      "role": "member"
+    }' \
+    "$BASE_URL/api/workspaces/$WORKSPACE_ID/members"
+
+### Удалить участника
+
+DELETE /api/workspaces/:id/members?userId=...
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/workspaces/$WORKSPACE_ID/members?userId=user-design-2"
+
+
+6. PROJECTS
+-----------
+
+### Список проектов
+
+GET /api/projects?workspaceId=...&departmentId=...&status=...&search=...&page=1&pageSize=20
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/projects?workspaceId=$WORKSPACE_ID&pageSize=10"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/projects?departmentId=$DEPARTMENT_ID&status=active&search=Platform"
+
+### Один проект + задачи
+
+GET /api/projects/:id
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/projects/$PROJECT_ID"
+
+### Создать проект
+
+POST /api/projects
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "workspaceId": "ws-taskflow-hq",
+      "departmentId": "dept-engineering",
+      "name": "Notifications Service",
+      "key": "ENG-NOTIFY",
+      "description": "Email and push delivery service",
+      "color": "#4F46E5",
+      "status": "active",
+      "ownerId": "user-engineering-1",
+      "startDate": "2026-10-26T09:00:00.000Z",
+      "dueDate": "2026-12-15T18:00:00.000Z"
+    }' \
+    "$BASE_URL/api/projects"
+
+### Обновить проект
+
+PATCH /api/projects/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "status": "paused",
+      "dueDate": "2026-12-20T18:00:00.000Z"
+    }' \
+    "$BASE_URL/api/projects/$PROJECT_ID"
+
+### Удалить проект
+
+DELETE /api/projects/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/projects/<PROJECT_ID>"
+
+
+7. TASKS
+--------
+
+### Список задач
+
+GET /api/tasks?workspaceId=...&projectId=...&departmentId=...&assigneeId=...
+             &status=...&priority=...&search=...&due=overdue|today|week
+             &page=1&pageSize=20
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/tasks?workspaceId=$WORKSPACE_ID&pageSize=10"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/tasks?departmentId=$DEPARTMENT_ID&status=in_progress&priority=urgent"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/tasks?due=overdue&pageSize=20"
+
+### Одна задача + теги + комментарии
+
+GET /api/tasks/:id
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/tasks/$TASK_ID"
+
+### Создать задачу
+
+POST /api/tasks
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "projectId": "project-engineering-1",
+      "title": "Add API request examples",
+      "description": "Document all routes for frontend setup",
+      "status": "todo",
+      "priority": "high",
+      "assigneeId": "user-engineering-2",
+      "dueDate": "2026-10-30T12:00:00.000Z",
+      "estimateMinutes": 90,
+      "tagIds": ["tag-engineering"]
+    }' \
+    "$BASE_URL/api/tasks"
+
+### Обновить задачу
+
+PATCH /api/tasks/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "status": "completed",
+      "priority": "medium"
+    }' \
+    "$BASE_URL/api/tasks/$TASK_ID"
+
+### Удалить задачу
+
+DELETE /api/tasks/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/tasks/<TASK_ID>"
+
+### Комментарии задачи
+
+GET /api/tasks/:id/comments
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/tasks/$TASK_ID/comments"
+
+POST /api/tasks/:id/comments
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "body": "Проверил на локальной базе — работает."
+    }' \
+    "$BASE_URL/api/tasks/$TASK_ID/comments"
+
+
+8. CALENDAR
+-----------
+
+### Список событий
+
+GET /api/calendar/events?workspaceId=...&departmentId=...&projectId=...
+                       &from=...&to=...
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/calendar/events?workspaceId=$WORKSPACE_ID"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/calendar/events?workspaceId=$WORKSPACE_ID&from=2026-10-26T00:00:00.000Z&to=2026-11-02T23:59:59.000Z"
+
+### Одно событие
+
+GET /api/calendar/events/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/calendar/events/$EVENT_ID"
+
+### Создать событие
+
+POST /api/calendar/events
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "workspaceId": "ws-taskflow-hq",
+      "departmentId": "dept-engineering",
+      "projectId": "project-engineering-1",
+      "taskId": "task-engineering-1",
+      "title": "Release readiness review",
+      "description": "Go/no-go before Friday release",
+      "startAt": "2026-10-28T09:00:00.000Z",
+      "endAt": "2026-10-28T10:00:00.000Z",
+      "allDay": false,
+      "location": "Zoom"
+    }' \
+    "$BASE_URL/api/calendar/events"
+
+### Обновить событие
+
+PATCH /api/calendar/events/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "location": "Meeting room A",
+      "endAt": "2026-10-28T10:30:00.000Z"
+    }' \
+    "$BASE_URL/api/calendar/events/$EVENT_ID"
+
+### Удалить событие
+
+DELETE /api/calendar/events/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/calendar/events/<EVENT_ID>"
+
+
+9. NOTIFICATIONS
+----------------
+
+### Список уведомлений текущего пользователя
+
+GET /api/notifications?unread=true&page=1&pageSize=20
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/notifications?pageSize=10"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/notifications?unread=true"
+
+### Создать уведомление (admin или manager)
+
+POST /api/notifications
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "userId": "user-engineering-2",
+      "type": "task_assigned",
+      "title": "New task assigned",
+      "body": "You were assigned to Add API request examples",
+      "entityType": "task",
+      "entityId": "task-engineering-1"
+    }' \
+    "$BASE_URL/api/notifications"
+
+### Отметить одно уведомление прочитанным
+
+PATCH /api/notifications/:id
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    "$BASE_URL/api/notifications/$NOTIFICATION_ID"
+
+### Удалить уведомление
+
+DELETE /api/notifications/:id
+
+  curl -s -i -b "$COOKIE_JAR" \
+    -X DELETE \
+    "$BASE_URL/api/notifications/<NOTIFICATION_ID>"
+
+### Отметить все уведомления прочитанными
+
+POST /api/notifications/read-all
+
+  curl -s -b "$COOKIE_JAR" \
+    -X POST \
+    "$BASE_URL/api/notifications/read-all"
+
+
+10. TAGS
+--------
+
+### Список тегов workspace
+
+GET /api/tags?workspaceId=...
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/tags?workspaceId=$WORKSPACE_ID"
+
+### Создать тег
+
+POST /api/tags
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "workspaceId": "ws-taskflow-hq",
+      "name": "release",
+      "color": "#EF4444"
+    }' \
+    "$BASE_URL/api/tags"
+
+
+11. ANALYTICS
+-------------
+
+GET /api/analytics/overview?workspaceId=...&departmentId=...&from=...&to=...
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/analytics/overview?workspaceId=$WORKSPACE_ID"
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/analytics/overview?departmentId=$DEPARTMENT_ID"
+
+
+12. AI ASSISTANT
+----------------
+
+### Список своих AI-диалогов
+
+GET /api/ai/conversations?workspaceId=...
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/ai/conversations?workspaceId=$WORKSPACE_ID"
+
+### Создать AI-диалог
+
+POST /api/ai/conversations
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "workspaceId": "ws-taskflow-hq",
+      "title": "Planning next sprint"
+    }' \
+    "$BASE_URL/api/ai/conversations"
+
+### Сообщения диалога
+
+GET /api/ai/conversations/:id/messages
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/ai/conversations/$AI_CONVERSATION_ID/messages"
+
+### Отправить сообщение AI и получить ответ
+
+POST /api/ai/conversations/:id/messages
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "content": "Что мне сделать сегодня в первую очередь?"
+    }' \
+    "$BASE_URL/api/ai/conversations/$AI_CONVERSATION_ID/messages"
+
+### Последние планы
+
+GET /api/ai/plan?workspaceId=...
+
+  curl -s -b "$COOKIE_JAR" \
+    "$BASE_URL/api/ai/plan?workspaceId=$WORKSPACE_ID"
+
+### Сгенерировать план дня
+
+POST /api/ai/plan
+
+  curl -s -b "$COOKIE_JAR" \
+    -H "content-type: application/json" \
+    -d '{
+      "workspaceId": "ws-taskflow-hq",
+      "date": "2026-10-26T09:00:00.000Z",
+      "availableMinutes": 240
+    }' \
+    "$BASE_URL/api/ai/plan"
+
+
+13. SETTINGS
+------------
+
+### Получить настройки текущего пользователя
+
+GET /api/settings
+
+  curl -s -b "$COOKIE_JAR" "$BASE_URL/api/settings"
+
+### Обновить настройки
+
+PATCH /api/settings
+
+  curl -s -b "$COOKIE_JAR" \
+    -X PATCH \
+    -H "content-type: application/json" \
+    -d '{
+      "theme": "dark",
+      "locale": "ru",
+      "dailySummaryEmail": true,
+      "overduePush": true,
+      "teamMentions": true,
+      "aiModel": "taskflow-rules-v1"
+    }' \
+    "$BASE_URL/api/settings"
+
+
+14. RTK QUERY — БЫСТРЫЕ ПРИМЕРЫ В КОМПОНЕНТЕ
+--------------------------------------------
+
+Импорт:
+
+  import {
+    useGetTasksQuery,
+    useCreateTaskMutation,
+    useGetMeQuery,
+    useLoginMutation,
+  } from "@/lib/redux/api";
+
+Пример чтения:
+
+  const {data, isLoading, isError, refetch} = useGetTasksQuery({
+    workspaceId: "ws-taskflow-hq",
+    pageSize: 20,
+    status: "in_progress",
+  });
+
+  // data = {items: TaskListItem[], pagination: {...}}
+
+Пример мутации:
+
+  const [createTask, {isLoading}] = useCreateTaskMutation();
+
+  await createTask({
+    projectId: "project-engineering-1",
+    title: "Новая задача",
+    priority: "high",
+    assigneeId: "user-engineering-2",
+  }).unwrap();
+
+Пример входа:
+
+  const [login] = useLoginMutation();
+  await login({email: "demo@taskflow.ai", password: "Demo1234!"}).unwrap();
+
+Типы и endpoint-ы находятся в:
+  src/lib/redux/api.ts
+  src/lib/redux/types.ts
+
+Cookie отправляется автоматически, потому что fetchBaseQuery настроен с
+credentials: "include". JWT/token в headers не нужен.
+
+
+15. ВАЖНО
+---------
+
+- PATCH и DELETE меняют/удаляют реальные данные. Для экспериментов лучше
+  создать отдельную запись и использовать её id.
+- API работает с текущей cookie-сессией. Если получили 401 — сначала выполните
+  POST /api/auth/login и сохраните cookie через -c.
+- Даты передаются в ISO 8601 с таймзоной, например:
+  2026-10-26T09:00:00.000Z
+- `pageSize` максимум 100.
+- Полная документация: docs/backend.md
+- Гайд для frontend-конфигурации: docs/api-guide.md
