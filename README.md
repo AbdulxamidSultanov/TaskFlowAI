@@ -7,8 +7,8 @@ Task management workspace with projects, tasks, calendar, analytics, notificatio
 - Next.js 16 (App Router, Route Handlers)
 - React 19, TypeScript, Tailwind CSS 4
 - next-intl (`ru`, `uz`, `en`)
-- SQLite + Drizzle ORM + `better-sqlite3`
-- Zod validation, bcrypt password hashing, HttpOnly cookie sessions
+- SQLite/libSQL + Drizzle ORM (local file or remote Turso)
+- Zod validation, bcrypt password hashing, signed HttpOnly cookie sessions
 - Redux Toolkit + RTK Query
 - Redux state persisted in `sessionStorage` until the tab is closed
 
@@ -18,10 +18,13 @@ Task management workspace with projects, tasks, calendar, analytics, notificatio
 npm install
 cp .env.example .env.local
 npm run db:setup
-npm run dev
+npm run dev -- --port 3000
 ```
 
 Open [http://localhost:3000](http://localhost:3000).
+
+Подробная инструкция по локальному запуску, настройке окружения и решению проблем:
+[`docs/local-setup.md`](docs/local-setup.md).
 
 `db:setup` applies migrations from `drizzle/` and seeds demo data: 5 departments with
 5 users, projects, tasks, comments, calendar events and notifications per department.
@@ -50,9 +53,9 @@ npm run db:reset      # delete SQLite file, migrate + seed
 npm run db:studio     # Drizzle Studio
 ```
 
-The local database lives in `.data/taskflow.db` and is gitignored. Override the path with
-`DATABASE_PATH` (see `.env.example`). If the API is hosted on a different origin, set
-`NEXT_PUBLIC_API_URL` (for example, `https://api.example.com/api`).
+The local database lives in `.data/taskflow.db` and is gitignored. Set `DATABASE_URL` to
+use a remote libSQL/Turso database instead (see `.env.example`). If the API is hosted on a
+different origin, set `NEXT_PUBLIC_API_URL` (for example, `https://api.example.com/api`).
 
 ## Backend
 
@@ -83,8 +86,8 @@ The store is created in `src/lib/redux/store.ts` and provided by
 `src/components/providers.tsx`. API hooks live in `src/lib/redux/api.ts`.
 
 - RTK Query sends HttpOnly session cookies automatically (`credentials: "include"`).
-- API cache and other Redux state are stored in `sessionStorage` under
-  `taskflowai:redux-state`.
+- Only the `workspace` UI slice is stored in `sessionStorage` under
+  `taskflowai:redux-state`; API data is always fetched fresh.
 - The snapshot survives page reloads in the current tab and is removed when the tab is
   closed (or explicitly after logout).
 - Use `useAppDispatch`, `useAppSelector`, and `useAppStore` from
@@ -111,4 +114,5 @@ drizzle/               # SQL migrations
 api-examples.txt       # copy-ready API calls for every endpoint
 docs/backend.md        # backend documentation
 docs/api-guide.md      # Redux / RTK Query / API usage guide
+docs/local-setup.md    # local setup and troubleshooting
 ```
