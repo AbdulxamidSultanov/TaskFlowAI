@@ -1,0 +1,1 @@
+export {default as AiIcon} from "./aiIcon.svg"

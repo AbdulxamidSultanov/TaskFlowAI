@@ -1,0 +1,46 @@
+{
+  "name": "taskflowai",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "mkdir -p .data && drizzle-kit migrate",
+    "db:push": "mkdir -p .data && drizzle-kit push",
+    "db:seed": "tsx --env-file-if-exists=.env.local src/db/seed.ts",
+    "db:setup": "npm run db:migrate && npm run db:seed",
+    "db:studio": "drizzle-kit studio",
+    "typecheck": "tsc --noEmit",
+    "db:reset": "rm -f .data/taskflow.db .data/taskflow.db-shm .data/taskflow.db-wal && npm run db:migrate && npm run db:seed"
+  },
+  "dependencies": {
+    "@mui/x-date-pickers": "^9.16.0",
+    "@reduxjs/toolkit": "^2.13.0",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^13.0.3",
+    "dayjs": "^1.11.23",
+    "drizzle-orm": "^0.45.4",
+    "lucide-react": "^1.61.0",
+    "next": "16.4.2",
+    "next-intl": "^4.14.9",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "react-redux": "^9.3.0"
+  },
+  "devDependencies": {
+    "@tailwindcss/turbopack": "^4",
+    "@types/better-sqlite3": "^9.6.0",
+    "@types/node": "^20",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "drizzle-kit": "^0.31.11",
+    "eslint": "^9",
+    "eslint-config-next": "16.4.2",
+    "tailwindcss": "^4",
+    "tsx": "^4.23.15",
+    "typescript": "^5"
+  }
+}
