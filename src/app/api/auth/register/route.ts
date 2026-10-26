@@ -55,19 +55,34 @@ export async function POST(request: Request) {
 
         await db.insert(userSettings).values({userId: user.id});
 
-        // New accounts join the first workspace in the database.
-        const [workspace] = await db
-            .select({id: workspaces.id})
-            .from(workspaces)
-            .limit(1);
+        // Every new account starts in its own workspace. Previously sign-ups
+        // were attached to the first workspace in the database (usually the
+        // demo one), which leaked demo projects and people into fresh
+        // accounts. An administrator can still invite the user to a shared
+        // workspace afterwards.
+        const slugBase =
+            input.name
+                .normalize("NFKD")
+                .toLowerCase()
+                .replace(/[^a-z0-9]+/g, "-")
+                .replace(/^-+|-+$/g, "")
+                .slice(0, 40) || "workspace";
+        const workspaceName = `${input.name.trim()} workspace`.slice(0, 100);
 
-        if (workspace) {
-            await db.insert(workspaceMembers).values({
-                workspaceId: workspace.id,
-                userId: user.id,
-                role: "member",
-            });
-        }
+        const [workspace] = await db
+            .insert(workspaces)
+            .values({
+                name: workspaceName,
+                slug: `${slugBase}-${user.id.slice(0, 8)}`,
+                ownerId: user.id,
+            })
+            .returning({id: workspaces.id});
+
+        await db.insert(workspaceMembers).values({
+            workspaceId: workspace.id,
+            userId: user.id,
+            role: "owner",
+        });
 
         await createSession(user.id, request);
 

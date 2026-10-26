@@ -954,7 +954,7 @@ function SettingsContent() {
                             </div>
                         </Card>
 
-                        {isGlobalAdmin ? (
+                        {canManageWorkspace ? (
                             <Card>
                                 <CardHeader
                                     title={t("createWorkspace")}

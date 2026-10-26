@@ -466,7 +466,7 @@
         "passwordTooShort": "Parol kamida 8 ta belgidan iborat bo'lishi kerak",
         "passwordsMismatch": "Parollar mos kelmadi",
         "registerError": "Akkaunt yaratib bo'lmadi",
-        "registerNote": "Ro'yxatdan o'tgach jamoa ish maydoniga qo'shilasiz.",
+        "registerNote": "Ro'yxatdan o'tgach siz o'z ish maydoningizga ega bo'lasiz va darhol ishlashni boshlashingiz mumkin.",
         "registerSubtitle": "Akkaunt yarating va jamoangiz bilan ishlashni boshlang",
         "registerTitle": "Akkaunt yaratish",
         "showPassword": "Parolni ko'rsatish",
