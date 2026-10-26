@@ -152,7 +152,7 @@ export default function NotificationsPage() {
                 />
             ) : (
                 <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                    <div className="divide-y divide-border">
+                    <div className="scroll-area max-h-[min(65dvh,640px)] divide-y divide-border overflow-y-auto overscroll-contain">
                         {(data?.items ?? []).map((notification) => (
                             <div
                                 key={notification.id}

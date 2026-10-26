@@ -256,7 +256,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 {t("noTasks")}
                             </p>
                         ) : (
-                            <div className="divide-y divide-border">
+                            <div className="scroll-area max-h-[420px] divide-y divide-border overflow-y-auto overscroll-contain pr-1">
                                 {(tasksData?.items ?? []).map((task) => {
                                     const assignee = task.assigneeId
                                         ? memberById.get(task.assigneeId)
@@ -351,7 +351,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 </Link>
                             }
                         />
-                        <div className="space-y-3">
+                        <div className="scroll-area max-h-[320px] space-y-3 overflow-y-auto overscroll-contain pr-1">
                             {(analytics?.byDepartment ?? []).map((department) => {
                                 const percent =
                                     department.total > 0
@@ -453,7 +453,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                     </Link>
                                 }
                             />
-                            <div className="space-y-2.5">
+                            <div className="scroll-area max-h-[280px] space-y-2.5 overflow-y-auto overscroll-contain pr-1">
                                 {todayEvents.length === 0 ? (
                                     <p className="text-sm text-text-muted">
                                         {t("scheduleEmpty")}
@@ -570,7 +570,7 @@ export default function DashboardPage() {    const t = useTranslations("dashboar
                                 />
                             }
                         />
-                        <div className="space-y-2">
+                        <div className="scroll-area max-h-[280px] space-y-2 overflow-y-auto overscroll-contain pr-1">
                             {(analytics?.upcoming ?? []).length === 0 ? (
                                 <p className="text-sm text-text-muted">
                                     {t("noUpcoming")}

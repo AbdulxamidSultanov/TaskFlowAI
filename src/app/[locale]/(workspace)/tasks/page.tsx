@@ -519,9 +519,9 @@ function TasksPageContent() {
                 </div>
             ) : (
                 <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-sm">
-                    <div className="overflow-x-auto">
+                    <div className="scroll-area max-h-[min(65dvh,680px)] overflow-auto overscroll-contain">
                         <table className="w-full min-w-[900px] border-collapse text-sm">
-                            <thead className="bg-surface-elevated">
+                            <thead className="sticky top-0 z-10 bg-surface-elevated shadow-[0_1px_0_var(--border)]">
                                 <tr className="border-b border-border text-left text-[11px] uppercase tracking-wide text-text-muted">
                                     <th className="px-4 py-3 font-medium">
                                         {t("tableTaskName")}

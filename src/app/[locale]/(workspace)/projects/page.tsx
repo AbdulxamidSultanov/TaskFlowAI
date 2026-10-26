@@ -203,7 +203,7 @@ function ProjectsPageContent() {
                 />
             ) : (
                 <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
-                    <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
+                    <div className="scroll-area grid max-h-[min(72dvh,860px)] gap-3 overflow-y-auto overscroll-contain pr-1 md:grid-cols-2 xl:grid-cols-3">
                     {projects.map((project) => {
                         const overdue =
                             project.dueDate &&
