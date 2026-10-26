@@ -17,6 +17,7 @@
     "db:reset": "rm -f .data/taskflow.db .data/taskflow.db-shm .data/taskflow.db-wal && npm run db:migrate && npm run db:seed"
   },
   "dependencies": {
+    "@libsql/client": "^0.18.0",
     "@mui/x-date-pickers": "^9.16.0",
     "@reduxjs/toolkit": "^2.13.0",
     "bcryptjs": "^3.0.3",

@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 
-import {db, sqlite} from "./index";
+import {db} from "./index";
 import {
     aiConversations,
     aiMessages,
@@ -596,11 +596,9 @@ async function main() {
     console.log("Seed complete:", counts);
     console.log("Demo login: demo@taskflow.ai / Demo1234!");
     console.log("Team login: any seeded email / Password123!");
-    sqlite.close();
 }
 
 main().catch((error) => {
     console.error("Seed failed:", error);
-    sqlite.close();
     process.exit(1);
 });
