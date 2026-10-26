@@ -75,8 +75,35 @@
   --info: #60A5FA;
 }
 
+/* System theme before the client applies an explicit choice. */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    color-scheme: dark;
+    --background: #0B1120;
+    --sidebar: #0F172A;
+    --surface: #151E30;
+    --surface-elevated: #1C2940;
+    --surface-hover: #243249;
+    --border: #2A3850;
+
+    --text-primary: #F1F5F9;
+    --text-secondary: #B0BDD0;
+    --text-muted: #8493AA;
+
+    --primary: #818CF8;
+    --primary-hover: #A5B4FC;
+    --accent: #A78BFA;
+
+    --success: #34D399;
+    --warning: #FBBF24;
+    --error: #F87171;
+    --info: #60A5FA;
+  }
+}
+
 body {
   background: var(--background);
   color: var(--text-primary);
   font-family: var(--font-inter), Arial, Helvetica, sans-serif;
 }
+

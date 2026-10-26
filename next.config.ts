@@ -3,11 +3,10 @@ import createNextIntlPlugin from "next-intl/plugin";
 
 const nextConfig: NextConfig = {
   /* config options here */
+  serverExternalPackages: ["better-sqlite3"],
   experimental: {
     agentFeedback: true,
   },
-  cacheComponents: true,
-  partialPrefetching: true,
   turbopack: {
     rules: {
       "*.css": {
