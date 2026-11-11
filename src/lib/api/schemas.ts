@@ -236,6 +236,36 @@ export const aiPlanRequestSchema = z.object({
     availableMinutes: z.number().int().min(60).max(1440).optional(),
 });
 
+export const aiTaskGenerationSchema = z.object({
+    workspaceId: id,
+    prompt: z.string().trim().min(8).max(2000),
+    projectId: id.nullable().optional(),
+});
+
+export const aiTaskDraftUpdateSchema = z.object({
+    title: z.string().trim().min(2).max(240).optional(),
+    description: z.string().trim().max(2000).nullable().optional(),
+    priority: z.enum(taskPriorities).optional(),
+    suggestedDeadline: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .nullable()
+        .optional(),
+    suggestedAssigneeId: id.nullable().optional(),
+    departmentId: id.nullable().optional(),
+    projectId: id.nullable().optional(),
+    estimateMinutes: z.number().int().min(0).max(10000).nullable().optional(),
+});
+
+export type AiTaskDraftUpdateInput = z.infer<
+    typeof aiTaskDraftUpdateSchema
+>;
+
+export const aiTaskPublishSchema = z.object({
+    workspaceId: id,
+    draftIds: z.array(id).min(1).max(50),
+});
+
 export const settingsUpdateSchema = z.object({
     theme: z.enum(themeValues).optional(),
     locale: z.enum(localeValues).optional(),

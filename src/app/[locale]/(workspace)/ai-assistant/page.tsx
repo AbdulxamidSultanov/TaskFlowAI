@@ -11,6 +11,7 @@ import {
 } from "lucide-react";
 import {useEffect, useMemo, useRef, useState} from "react";
 
+import {AiTaskGenerator} from "@/components/ai/ai-task-generator";
 import {Avatar} from "@/components/ui/avatar";
 import {Badge, priorityTone, statusTone} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
@@ -218,6 +219,8 @@ export default function AiAssistantPage() {
                     </Badge>
                 }
             />
+
+            <AiTaskGenerator />
 
             <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_360px]">
                 <Card className="flex max-h-[70dvh] flex-col p-3 xl:max-h-[calc(100dvh-13rem)]">

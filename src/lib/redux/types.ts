@@ -437,6 +437,53 @@ export type AiPlan = {
     items: AiPlanItem[];
 };
 
+export type AiTaskDraft = {
+    id: string;
+    workspaceId: string;
+    userId: string;
+    batchId: string;
+    projectId: string | null;
+    departmentId: string | null;
+    title: string;
+    description: string | null;
+    priority: TaskPriority;
+    suggestedDeadline: IsoDateString | null;
+    suggestedAssigneeId: string | null;
+    estimateMinutes: number | null;
+    state: "draft" | "published" | "rejected";
+    publishedTaskId: string | null;
+    createdAt: IsoDateString;
+    updatedAt: IsoDateString;
+    project: {id: string; name: string; color: string} | null;
+    department: {id: string; name: string; color: string} | null;
+    assignee: {id: string; name: string; avatarUrl: string | null} | null;
+};
+
+export type AiTaskDraftList = {
+    tasks: AiTaskDraft[];
+    configured: boolean;
+    mode: "ai" | "mock";
+    model: string;
+};
+
+export type AiTaskGenerationResult = {
+    batchId: string;
+    mode: "ai" | "mock";
+    model: string;
+    tasks: AiTaskDraft[];
+};
+
+export type AiTaskDraftUpdateInput = {
+    title?: string;
+    description?: string | null;
+    priority?: TaskPriority;
+    suggestedDeadline?: string | null;
+    suggestedAssigneeId?: string | null;
+    departmentId?: string | null;
+    projectId?: string | null;
+    estimateMinutes?: number | null;
+};
+
 export type Health = {
     status: string;
     database: string;
@@ -629,6 +676,17 @@ export type AiPlanRequest = {
     workspaceId: string;
     date?: string;
     availableMinutes?: number;
+};
+
+export type AiTaskGenerationInput = {
+    workspaceId: string;
+    prompt: string;
+    projectId?: string | null;
+};
+
+export type AiTaskPublishInput = {
+    workspaceId: string;
+    draftIds: string[];
 };
 
 export type SettingsUpdateInput = {

@@ -25,6 +25,7 @@ type ToastContextValue = {
     toast: (message: string, type?: ToastType) => void;
     success: (message: string) => void;
     error: (message: string) => void;
+    info: (message: string) => void;
 };
 
 const ToastContext = createContext<ToastContextValue | null>(null);
@@ -51,6 +52,7 @@ export function ToastProvider({children}: {children: ReactNode}) {
             toast,
             success: (message) => toast(message, "success"),
             error: (message) => toast(message, "error"),
+            info: (message) => toast(message, "info"),
         }),
         [toast],
     );

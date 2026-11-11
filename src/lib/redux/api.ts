@@ -62,6 +62,7 @@ export const taskflowApi = createApi({
         "AiConversation",
         "AiMessage",
         "AiPlan",
+        "AiTaskDraft",
         "Settings",
     ],
     // Kept until the tab closes: RTK Query cache is also persisted in
@@ -662,6 +663,71 @@ export const taskflowApi = createApi({
             invalidatesTags: ["AiPlan", "Task", "Analytics"],
         }),
 
+        getAiTaskDrafts: builder.query<
+            types.AiTaskDraftList,
+            {workspaceId: string}
+        >({
+            query: ({workspaceId}) =>
+                `/ai/task-generator${toQueryString({workspaceId})}`,
+            transformResponse: (response) =>
+                unwrap<types.AiTaskDraftList>(response),
+            providesTags: ["AiTaskDraft"],
+        }),
+        generateAiTasks: builder.mutation<
+            types.AiTaskGenerationResult,
+            types.AiTaskGenerationInput
+        >({
+            query: (data) => ({
+                url: "/ai/task-generator",
+                method: "POST",
+                body: data,
+            }),
+            transformResponse: (response) =>
+                unwrap<types.AiTaskGenerationResult>(response),
+            invalidatesTags: ["AiTaskDraft"],
+        }),
+        updateAiTaskDraft: builder.mutation<
+            types.AiTaskDraft,
+            {id: string; data: types.AiTaskDraftUpdateInput}
+        >({
+            query: ({id, data}) => ({
+                url: `/ai/task-generator/${id}`,
+                method: "PATCH",
+                body: data,
+            }),
+            transformResponse: (response) =>
+                unwrap<types.AiTaskDraft>(response),
+            invalidatesTags: ["AiTaskDraft"],
+        }),
+        rejectAiTaskDraft: builder.mutation<void, {id: string}>({
+            query: ({id}) => ({
+                url: `/ai/task-generator/${id}`,
+                method: "DELETE",
+            }),
+            invalidatesTags: ["AiTaskDraft"],
+        }),
+        publishAiTaskDrafts: builder.mutation<
+            {published: Array<{draftId: string; taskId: string}>},
+            types.AiTaskPublishInput
+        >({
+            query: (data) => ({
+                url: "/ai/task-generator/publish",
+                method: "POST",
+                body: data,
+            }),
+            transformResponse: (response) =>
+                unwrap<{
+                    published: Array<{draftId: string; taskId: string}>;
+                }>(response),
+            invalidatesTags: [
+                "AiTaskDraft",
+                "Task",
+                "Workspace",
+                "Analytics",
+                "Notification",
+            ],
+        }),
+
         getSettings: builder.query<types.UserSettings, void>({
             query: () => "/settings",
             transformResponse: (response) =>
@@ -740,6 +806,11 @@ export const {
     useSendAiMessageMutation,
     useGetAiPlansQuery,
     useCreateAiPlanMutation,
+    useGetAiTaskDraftsQuery,
+    useGenerateAiTasksMutation,
+    useUpdateAiTaskDraftMutation,
+    useRejectAiTaskDraftMutation,
+    usePublishAiTaskDraftsMutation,
     useGetSettingsQuery,
     useUpdateSettingsMutation,
 } = taskflowApi;

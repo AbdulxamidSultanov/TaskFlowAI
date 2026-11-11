@@ -77,8 +77,13 @@ Client API and Redux setup guide: [`docs/api-guide.md`](docs/api-guide.md).
 
 Ready-to-copy HTTP examples for every endpoint: [`api-examples.txt`](api-examples.txt).
 
-The AI assistant is deterministic and rule-based, so the backend works without an external
-LLM key. It ranks open tasks by priority and due date and builds a day plan with time blocks.
+The day planner is deterministic and rule-based, so it works without an external LLM key.
+The separate **AI Task Generator** can call an OpenAI-compatible model, produce validated
+draft tasks and publish them only after a human confirms them. Without `AI_API_KEY` it runs
+in a clearly marked demo mode.
+
+AI Task Generator setup, model choice, limits and test results:
+[`docs/ai-task-generator.md`](docs/ai-task-generator.md).
 
 ## Redux Toolkit / RTK Query
 
@@ -115,4 +120,5 @@ api-examples.txt       # copy-ready API calls for every endpoint
 docs/backend.md        # backend documentation
 docs/api-guide.md      # Redux / RTK Query / API usage guide
 docs/local-setup.md    # local setup and troubleshooting
+docs/ai-task-generator.md # AI generator setup and limitations
 ```
