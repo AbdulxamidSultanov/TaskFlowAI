@@ -393,6 +393,57 @@ export const aiPlanItems = sqliteTable(
     (table) => [index("ai_plan_items_plan_idx").on(table.planId)],
 );
 
+export const aiTaskDrafts = sqliteTable(
+    "ai_task_drafts",
+    {
+        id: id(),
+        workspaceId: text("workspace_id")
+            .notNull()
+            .references(() => workspaces.id, {onDelete: "cascade"}),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, {onDelete: "cascade"}),
+        batchId: text("batch_id").notNull(),
+        projectId: text("project_id").references(() => projects.id, {
+            onDelete: "set null",
+        }),
+        departmentId: text("department_id").references(() => departments.id, {
+            onDelete: "set null",
+        }),
+        title: text("title").notNull(),
+        description: text("description"),
+        priority: text("priority", {
+            enum: ["low", "medium", "high", "urgent"],
+        })
+            .notNull()
+            .default("medium"),
+        suggestedDeadline: integer("suggested_deadline", {
+            mode: "timestamp_ms",
+        }),
+        suggestedAssigneeId: text("suggested_assignee_id").references(
+            () => users.id,
+            {onDelete: "set null"},
+        ),
+        estimateMinutes: integer("estimate_minutes"),
+        state: text("state", {
+            enum: ["draft", "published", "rejected"],
+        })
+            .notNull()
+            .default("draft"),
+        publishedTaskId: text("published_task_id").references(() => tasks.id, {
+            onDelete: "set null",
+        }),
+        createdAt: createdAt(),
+        updatedAt: updatedAt(),
+    },
+    (table) => [
+        index("ai_task_drafts_workspace_idx").on(table.workspaceId),
+        index("ai_task_drafts_user_idx").on(table.userId),
+        index("ai_task_drafts_state_idx").on(table.state),
+        index("ai_task_drafts_batch_idx").on(table.batchId),
+    ],
+);
+
 export const sessions = sqliteTable(
     "sessions",
     {

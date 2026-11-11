@@ -41,6 +41,17 @@ AUTH_SECRET=любая-длинная-случайная-строка
 openssl rand -hex 32
 ```
 
+Для AI Task Generator добавьте серверный ключ OpenAI-совместимого провайдера:
+
+```env
+AI_API_KEY=<ключ>
+AI_BASE_URL=https://openrouter.ai/api/v1
+AI_MODEL=openai/gpt-4.1-mini
+```
+
+Без ключа генератор работает в помеченном демо-режиме на mock-ответах. Подробнее:
+[`ai-task-generator.md`](ai-task-generator.md).
+
 ## 4. База данных
 
 ```bash

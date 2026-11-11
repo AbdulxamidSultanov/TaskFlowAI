@@ -40,6 +40,21 @@ export async function requireWorkspaceMember(
         .limit(1);
 
     if (!membership) {
+        // Global admins see every workspace in the switcher, so they also need
+        // access to workspace-scoped APIs where they have no explicit member
+        // row. Treat them as workspace admins instead of returning a 403.
+        if (user.role === "admin") {
+            const [workspace] = await db
+                .select()
+                .from(workspaces)
+                .where(eq(workspaces.id, workspaceId))
+                .limit(1);
+
+            if (workspace) {
+                return {workspace, role: "admin" as const};
+            }
+        }
+
         throw new ApiError(403, "Workspace access denied", "FORBIDDEN");
     }
 
