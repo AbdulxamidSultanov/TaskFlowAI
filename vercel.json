@@ -3,7 +3,7 @@
   "regions": ["dub1"],
   "schedules": {
     "task-reminders": {
-      "schedule": "*/10 * * * *",
+      "schedule": "*/15 * * * *",
       "path": "/api/cron/reminders",
       "requestMethod": "GET"
     }
