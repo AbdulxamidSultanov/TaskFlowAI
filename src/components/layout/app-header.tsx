@@ -76,6 +76,7 @@ export function AppHeader({ onMenuClick }: { onMenuClick: () => void }) {
 
     const notificationsRef = useRef<HTMLDivElement>(null);
     const profileRef = useRef<HTMLDivElement>(null);
+    const searchInputRef = useRef<HTMLInputElement>(null);
 
     const { data: notifications } = useGetNotificationsQuery(
         { pageSize: 6 },
@@ -100,6 +101,31 @@ export function AppHeader({ onMenuClick }: { onMenuClick: () => void }) {
         };
         document.addEventListener("mousedown", onClick);
         return () => document.removeEventListener("mousedown", onClick);
+    }, []);
+
+    // The input shows a "Ctrl K" hint, so the shortcut must actually focus it.
+    // Below the md breakpoint the desktop form is hidden: open the mobile
+    // search instead (its input autoFocuses).
+    useEffect(() => {
+        const onKeyDown = (event: KeyboardEvent) => {
+            if (
+                (event.ctrlKey || event.metaKey) &&
+                event.key.toLowerCase() === "k"
+            ) {
+                event.preventDefault();
+                if (
+                    window.matchMedia("(min-width: 768px)").matches &&
+                    searchInputRef.current
+                ) {
+                    searchInputRef.current.focus();
+                    searchInputRef.current.select();
+                } else {
+                    setMobileSearch(true);
+                }
+            }
+        };
+        document.addEventListener("keydown", onKeyDown);
+        return () => document.removeEventListener("keydown", onKeyDown);
     }, []);
 
     const submitSearch = (event: React.FormEvent) => {
@@ -162,6 +188,7 @@ export function AppHeader({ onMenuClick }: { onMenuClick: () => void }) {
                             className="shrink-0 text-text-secondary"
                         />
                         <input
+                            ref={searchInputRef}
                             type="search"
                             value={search}
                             onChange={(event) => setSearch(event.target.value)}
