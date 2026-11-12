@@ -1,16 +1,12 @@
-import {asc, inArray, sql} from "drizzle-orm";
+import { visibleUserIds, projectScope, taskScope } from "@/lib/auth/scope";
+import { asc, inArray, sql } from "drizzle-orm";
 
-import {db} from "@/db";
-import {workspaceMembers, workspaces} from "@/db/schema";
-import {
-    created,
-    handleRoute,
-    ok,
-    parseBody,
-} from "@/lib/api/http";
-import {workspaceCreateSchema} from "@/lib/api/schemas";
-import {getAccessibleWorkspaceIds} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { workspaceMembers, workspaces } from "@/db/schema";
+import { created, handleRoute, ok, parseBody } from "@/lib/api/http";
+import { workspaceCreateSchema } from "@/lib/api/schemas";
+import { getAccessibleWorkspaceIds } from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
 export async function GET() {
     return handleRoute(async () => {
@@ -33,17 +29,18 @@ export async function GET() {
                 createdAt: workspaces.createdAt,
                 updatedAt: workspaces.updatedAt,
                 role: workspaceMembers.role,
+                accessScope: workspaceMembers.accessScope,
                 memberCount: sql<number>`(
                     select count(*) from workspace_members wm
-                    where wm.workspace_id = ${workspaces.id}
+                    where wm.workspace_id = ${workspaces.id} and wm.user_id in (select id from users where ${inArray(sql`id`, await visibleUserIds(user))})
                 )`,
                 projectCount: sql<number>`(
-                    select count(*) from projects p
-                    where p.workspace_id = ${workspaces.id}
+                    select count(*) from projects
+                    where projects.workspace_id = ${workspaces.id} and ${await projectScope(user)}
                 )`,
                 taskCount: sql<number>`(
-                    select count(*) from tasks t
-                    where t.workspace_id = ${workspaces.id}
+                    select count(*) from tasks
+                    where tasks.workspace_id = ${workspaces.id} and ${await taskScope(user)}
                 )`,
             })
             .from(workspaces)
@@ -63,20 +60,24 @@ export async function POST(request: Request) {
         const user = await requireUser();
         const input = await parseBody(request, workspaceCreateSchema);
 
-        const [workspace] = await db
-            .insert(workspaces)
-            .values({
-                name: input.name,
-                slug: input.slug,
-                ownerId: user.id,
-                plan: input.plan ?? "free",
-            })
-            .returning();
+        const workspace = await db.transaction(async (tx) => {
+            const [workspace] = await tx
+                .insert(workspaces)
+                .values({
+                    name: input.name,
+                    slug: input.slug,
+                    ownerId: user.id,
+                    plan: input.plan ?? "free",
+                })
+                .returning();
 
-        await db.insert(workspaceMembers).values({
-            workspaceId: workspace.id,
-            userId: user.id,
-            role: "owner",
+            await tx.insert(workspaceMembers).values({
+                workspaceId: workspace.id,
+                userId: user.id,
+                role: "owner",
+            });
+
+            return workspace;
         });
 
         return created(workspace);

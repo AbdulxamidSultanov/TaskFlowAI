@@ -3,18 +3,22 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "tsx scripts/run.ts",
     "build": "next build",
-    "start": "next start",
+    "start": "tsx scripts/run.ts --production",
     "lint": "eslint",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "node -e \"require('fs').mkdirSync('.data',{recursive:true})\" && drizzle-kit migrate",
+    "db:migrate": "tsx scripts/migrate.ts",
     "db:push": "node -e \"require('fs').mkdirSync('.data',{recursive:true})\" && drizzle-kit push",
     "db:seed": "tsx --env-file-if-exists=.env.local src/db/seed.ts",
     "db:setup": "npm run db:migrate && npm run db:seed",
     "db:studio": "drizzle-kit studio",
     "typecheck": "tsc --noEmit",
-    "db:reset": "node -e \"const fs=require('fs');for(const f of ['taskflow.db','taskflow.db-shm','taskflow.db-wal'])fs.rmSync('.data/'+f,{force:true})\" && npm run db:migrate && npm run db:seed"
+    "db:reset": "node -e \"const fs=require('fs');for(const f of ['taskflow.db','taskflow.db-shm','taskflow.db-wal'])fs.rmSync('.data/'+f,{force:true})\" && npm run db:migrate && npm run db:seed",
+    "db:backup": "tsx scripts/backup.ts",
+    "notifications:worker": "tsx scripts/notification-worker.ts",
+    "test": "tsx --test tests/*.test.ts",
+    "test:production": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",

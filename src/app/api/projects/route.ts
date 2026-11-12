@@ -1,8 +1,14 @@
-import {and, asc, count, eq, inArray, like, or, sql} from "drizzle-orm";
-import {alias} from "drizzle-orm/sqlite-core";
+import {
+    projectScope,
+    taskScope,
+    assertAssignable,
+    departmentScope,
+} from "@/lib/auth/scope";
+import { and, asc, count, eq, inArray, like, or, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/sqlite-core";
 
-import {db} from "@/db";
-import {departments, projects, users} from "@/db/schema";
+import { db } from "@/db";
+import { departments, projects, users } from "@/db/schema";
 import {
     ApiError,
     created,
@@ -11,13 +17,13 @@ import {
     parseBody,
     parseQuery,
 } from "@/lib/api/http";
-import {getPagination, paginationMeta} from "@/lib/api/pagination";
-import {projectCreateSchema, projectListQuerySchema} from "@/lib/api/schemas";
+import { getPagination, paginationMeta } from "@/lib/api/pagination";
+import { projectCreateSchema, projectListQuerySchema } from "@/lib/api/schemas";
 import {
     getAccessibleWorkspaceIds,
-    requireWorkspaceMember,
+    requireWorkspaceSupervisor,
 } from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { requireUser } from "@/lib/auth/session";
 
 const owner = alias(users, "project_owner");
 
@@ -33,7 +39,9 @@ export async function GET(request: Request) {
             throw new ApiError(403, "Workspace access denied", "FORBIDDEN");
         }
 
-        const conditions = [];
+        const conditions: Array<import("drizzle-orm").SQL | undefined> = [
+            await projectScope(user, query.workspaceId),
+        ];
         if (query.workspaceId) {
             conditions.push(eq(projects.workspaceId, query.workspaceId));
         } else {
@@ -83,19 +91,19 @@ export async function GET(request: Request) {
                         email: owner.email,
                         avatarUrl: owner.avatarUrl,
                     },
-                    taskCount: sql<number>`(
-                        select count(*) from tasks t
-                        where t.project_id = ${projects.id}
-                    )`,
+                    taskCount: sql<number>`(select count(*) from tasks where tasks.project_id = ${projects.id} and ${await taskScope(user)})`,
                 })
                 .from(projects)
-                .innerJoin(departments, eq(departments.id, projects.departmentId))
+                .innerJoin(
+                    departments,
+                    eq(departments.id, projects.departmentId),
+                )
                 .leftJoin(owner, eq(owner.id, projects.ownerId))
                 .where(where)
                 .orderBy(asc(projects.name))
                 .limit(pagination.limit)
                 .offset(pagination.offset),
-            db.select({value: count()}).from(projects).where(where),
+            db.select({ value: count() }).from(projects).where(where),
         ]);
 
         return ok({
@@ -109,15 +117,30 @@ export async function POST(request: Request) {
     return handleRoute(async () => {
         const user = await requireUser();
         const input = await parseBody(request, projectCreateSchema);
-        await requireWorkspaceMember(user, input.workspaceId);
+        await requireWorkspaceSupervisor(user, input.workspaceId);
+        await assertAssignable(
+            user,
+            input.workspaceId,
+            input.ownerId ?? user.id,
+        );
+        if (input.startDate && input.dueDate && input.startDate > input.dueDate)
+            throw new ApiError(422, "Invalid date range", "INVALID_TIME_RANGE");
 
         const [department] = await db
-            .select({id: departments.id})
+            .select({
+                id: departments.id,
+                workspaceId: departments.workspaceId,
+            })
             .from(departments)
-            .where(eq(departments.id, input.departmentId))
+            .where(
+                and(
+                    eq(departments.id, input.departmentId),
+                    await departmentScope(user),
+                ),
+            )
             .limit(1);
 
-        if (!department) {
+        if (!department || department.workspaceId !== input.workspaceId) {
             throw new ApiError(404, "Department not found", "NOT_FOUND");
         }
 

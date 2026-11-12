@@ -13,7 +13,7 @@
 ```bash
 git clone https://github.com/AbdulxamidSultanov/TaskFlowAI.git
 cd TaskFlowAI
-git checkout develop
+git checkout main
 ```
 
 ## 2. Установка зависимостей
@@ -57,6 +57,8 @@ AI_MODEL=openai/gpt-4.1-mini
 ```bash
 npm run db:setup
 ```
+
+**Внимание:** db:setup и db:seed очищают данные. Для существующей базы используйте только `npm run db:migrate`; перед локальной миграцией создаётся проверенная резервная копия в `.data/backups/`.
 
 Команда применяет миграции из `drizzle/` и засеивает демо-данные: отделы, сотрудников,
 проекты, задачи, комментарии, события календаря и уведомления.
@@ -153,3 +155,11 @@ npm run db:reset
 - `.env.example` — шаблон переменных.
 - `.data/` — локальная SQLite-база, в Git не попадает.
 - `drizzle/` — SQL-миграции, коммитятся в репозиторий.
+
+## Фоновый процесс и production
+
+`npm run dev` запускает веб-приложение и обработчик напоминаний. Остановка команды завершает оба процесса. `npm run start` делает то же для production-сборки и требует AUTH_SECRET длиной минимум 32 символа. DATABASE_URL одинаков для runtime, seed и CLI. Для удалённых миграций сначала сделайте snapshot у провайдера, затем задайте CONFIRM_REMOTE_MIGRATION=1.
+
+Вложения требуют постоянного каталога FILE_STORAGE_PATH (по умолчанию `.data/uploads`); резервируйте его вместе с БД при остановленной записи. Worker должен работать с той же базой, что и приложение. На serverless его запускают отдельным сервисом.
+
+См. [time-management.md](time-management.md) для сценариев и ограничений.

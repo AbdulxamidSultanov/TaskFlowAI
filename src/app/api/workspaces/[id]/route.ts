@@ -1,7 +1,14 @@
-import {eq} from "drizzle-orm";
+import { visibleUserIds, projectScope, taskScope } from "@/lib/auth/scope";
+import { and, inArray, eq } from "drizzle-orm";
 
-import {db} from "@/db";
-import {projects, tasks, users, workspaceMembers, workspaces} from "@/db/schema";
+import { db } from "@/db";
+import {
+    projects,
+    tasks,
+    users,
+    workspaceMembers,
+    workspaces,
+} from "@/db/schema";
 import {
     ApiError,
     handleRoute,
@@ -9,17 +16,17 @@ import {
     ok,
     parseBody,
 } from "@/lib/api/http";
-import {workspaceUpdateSchema} from "@/lib/api/schemas";
-import {requireWorkspaceMember} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { workspaceUpdateSchema } from "@/lib/api/schemas";
+import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
-type Params = {params: Promise<{id: string}>};
+type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, {params}: Params) {
+export async function GET(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
-        const {workspace, role} = await requireWorkspaceMember(user, id, [
+        const { id } = await params;
+        const { workspace, role } = await requireWorkspaceMember(user, id, [
             "owner",
             "admin",
             "member",
@@ -41,17 +48,25 @@ export async function GET(_request: Request, {params}: Params) {
             })
             .from(workspaceMembers)
             .innerJoin(users, eq(users.id, workspaceMembers.userId))
-            .where(eq(workspaceMembers.workspaceId, id));
+            .where(
+                and(
+                    eq(workspaceMembers.workspaceId, id),
+                    inArray(
+                        workspaceMembers.userId,
+                        await visibleUserIds(user, id),
+                    ),
+                ),
+            );
 
         const projectRows = await db
             .select()
             .from(projects)
-            .where(eq(projects.workspaceId, id));
+            .where(await projectScope(user, id));
 
         const taskCount = await db
-            .select({id: tasks.id})
+            .select({ id: tasks.id })
             .from(tasks)
-            .where(eq(tasks.workspaceId, id));
+            .where(await taskScope(user, id));
 
         return ok({
             ...workspace,
@@ -67,24 +82,24 @@ export async function GET(_request: Request, {params}: Params) {
     });
 }
 
-export async function PATCH(request: Request, {params}: Params) {
+export async function PATCH(request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         await requireWorkspaceMember(user, id, ["owner", "admin"]);
         const input = await parseBody(request, workspaceUpdateSchema);
 
         const [updated] = await db
             .update(workspaces)
             .set({
-                ...(input.name === undefined ? {} : {name: input.name}),
-                ...(input.plan === undefined ? {} : {plan: input.plan}),
+                ...(input.name === undefined ? {} : { name: input.name }),
+                ...(input.plan === undefined ? {} : { plan: input.plan }),
                 ...(input.storageUsedBytes === undefined
                     ? {}
-                    : {storageUsedBytes: input.storageUsedBytes}),
+                    : { storageUsedBytes: input.storageUsedBytes }),
                 ...(input.storageLimitBytes === undefined
                     ? {}
-                    : {storageLimitBytes: input.storageLimitBytes}),
+                    : { storageLimitBytes: input.storageLimitBytes }),
                 updatedAt: new Date(),
             })
             .where(eq(workspaces.id, id))
@@ -98,13 +113,11 @@ export async function PATCH(request: Request, {params}: Params) {
     });
 }
 
-export async function DELETE(_request: Request, {params}: Params) {
+export async function DELETE(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
-        const {workspace} = await requireWorkspaceMember(user, id, [
-            "owner",
-        ]);
+        const { id } = await params;
+        const { workspace } = await requireWorkspaceMember(user, id, ["owner"]);
 
         if (workspace.ownerId !== user.id && user.role !== "admin") {
             throw new ApiError(

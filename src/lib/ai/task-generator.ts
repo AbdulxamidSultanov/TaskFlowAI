@@ -1,8 +1,9 @@
-import {randomUUID} from "node:crypto";
+import { dateAtHour } from "@/lib/time-zone";
+import { randomUUID } from "node:crypto";
 
-import {z} from "zod";
+import { z } from "zod";
 
-import {taskPriorities} from "@/lib/domain";
+import { taskPriorities } from "@/lib/domain";
 
 export const MAX_GENERATOR_PROMPT = 2000;
 export const MAX_GENERATED_TASKS = 10;
@@ -16,18 +17,20 @@ export type GeneratorContext = {
     userId: string;
     prompt: string;
     today: string;
+    timezone?: string;
     projects: Array<{
         id: string;
         name: string;
         key: string;
         departmentId: string;
     }>;
-    departments: Array<{id: string; name: string}>;
+    departments: Array<{ id: string; name: string }>;
     members: Array<{
         id: string;
         name: string;
         role: string;
         departmentId: string | null;
+        allocatedMinutes?: number;
     }>;
 };
 
@@ -75,7 +78,7 @@ function config() {
 }
 
 export function getAiGeneratorStatus() {
-    const {apiKey, model} = config();
+    const { apiKey, model } = config();
     return {
         configured: Boolean(apiKey) && process.env.AI_MOCK !== "1",
         model,
@@ -124,26 +127,29 @@ const responseJsonSchema = {
                     "estimateMinutes",
                 ],
                 properties: {
-                    title: {type: "string", minLength: 2, maxLength: 240},
-                    description: {type: "string", maxLength: 2000},
-                    priority: {type: "string", enum: [...taskPriorities]},
+                    title: { type: "string", minLength: 2, maxLength: 240 },
+                    description: { type: "string", maxLength: 2000 },
+                    priority: { type: "string", enum: [...taskPriorities] },
                     suggestedDeadline: {
                         anyOf: [
-                            {type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$"},
-                            {type: "null"},
+                            {
+                                type: "string",
+                                pattern: "^\\d{4}-\\d{2}-\\d{2}$",
+                            },
+                            { type: "null" },
                         ],
                     },
                     suggestedAssigneeId: {
-                        anyOf: [{type: "string"}, {type: "null"}],
+                        anyOf: [{ type: "string" }, { type: "null" }],
                     },
                     departmentId: {
-                        anyOf: [{type: "string"}, {type: "null"}],
+                        anyOf: [{ type: "string" }, { type: "null" }],
                     },
                     projectId: {
-                        anyOf: [{type: "string"}, {type: "null"}],
+                        anyOf: [{ type: "string" }, { type: "null" }],
                     },
                     estimateMinutes: {
-                        anyOf: [{type: "integer"}, {type: "null"}],
+                        anyOf: [{ type: "integer" }, { type: "null" }],
                     },
                 },
             },
@@ -162,7 +168,8 @@ Rules:
 6. priority must be low, medium, high or urgent.
 7. estimateMinutes is a realistic integer or null.
 8. Keep the user's language for titles and descriptions.
-9. The generated tasks are drafts; they do not exist until a human confirms them.`;
+9. Prefer assignees with less allocatedMinutes when their department matches. Treat this as estimated workload, not guaranteed availability.
+10. The generated tasks are drafts; they do not exist until a human confirms them.`;
 
 function stripCodeFence(value: string) {
     const trimmed = value.trim();
@@ -173,7 +180,7 @@ function stripCodeFence(value: string) {
         .trim();
 }
 
-function normalizeSuggestion(
+export function normalizeSuggestion(
     item: z.infer<typeof aiDraftSchema>,
     context: GeneratorContext,
 ): DraftSuggestion | null {
@@ -183,9 +190,6 @@ function normalizeSuggestion(
     const allowedProjects = new Map(
         context.projects.map((project) => [project.id, project]),
     );
-    const allowedDepartments = new Set(
-        context.departments.map((department) => department.id),
-    );
     const allowedMembers = new Set(context.members.map((member) => member.id));
 
     let project = item.projectId
@@ -194,15 +198,24 @@ function normalizeSuggestion(
     if (!project) project = context.projects[0];
     if (!project) return null;
 
-    const departmentId =
-        item.departmentId && allowedDepartments.has(item.departmentId)
-            ? item.departmentId
-            : project.departmentId;
-
+    const departmentId = project.departmentId;
     let deadline: Date | null = null;
     if (item.suggestedDeadline) {
-        const parsed = new Date(`${item.suggestedDeadline}T18:00:00`);
-        if (!Number.isNaN(parsed.getTime())) deadline = parsed;
+        const maxDate = new Date(`${context.today}T00:00:00Z`);
+        maxDate.setUTCDate(maxDate.getUTCDate() + 21);
+        if (
+            item.suggestedDeadline >= context.today &&
+            item.suggestedDeadline <= maxDate.toISOString().slice(0, 10)
+        ) {
+            try {
+                deadline = dateAtHour(
+                    item.suggestedDeadline,
+                    context.timezone ?? "UTC",
+                );
+            } catch {
+                deadline = null;
+            }
+        }
     }
 
     return {
@@ -259,8 +272,7 @@ function mockGeneration(context: GeneratorContext): GenerationResult {
 
     const members = context.members.filter(
         (member) =>
-            member.departmentId === department.id ||
-            member.role === "manager",
+            member.departmentId === department.id || member.role === "manager",
     );
 
     const templates = [
@@ -289,11 +301,14 @@ function mockGeneration(context: GeneratorContext): GenerationResult {
         "high",
     ];
 
-    const now = new Date();
-    const tasks = Array.from({length: count}, (_, index) => {
+    const now = new Date(`${context.today}T00:00:00Z`);
+    const tasks = Array.from({ length: count }, (_, index) => {
         const deadline = new Date(now);
-        deadline.setDate(deadline.getDate() + 3 + index);
-        deadline.setHours(18, 0, 0, 0);
+        deadline.setUTCDate(deadline.getUTCDate() + 3 + index);
+        const zonedDeadline = dateAtHour(
+            deadline.toISOString().slice(0, 10),
+            context.timezone ?? "UTC",
+        );
 
         const fallbackTitle =
             count === 1
@@ -304,7 +319,7 @@ function mockGeneration(context: GeneratorContext): GenerationResult {
             title: fallbackTitle,
             description: `Черновик по запросу: «${context.prompt.trim().slice(0, 240)}». Уточните детали и исполнителя перед публикацией.`,
             priority: priorities[index % priorities.length],
-            suggestedDeadline: deadline,
+            suggestedDeadline: zonedDeadline,
             suggestedAssigneeId:
                 members.length > 0 ? members[index % members.length].id : null,
             departmentId: department.id,

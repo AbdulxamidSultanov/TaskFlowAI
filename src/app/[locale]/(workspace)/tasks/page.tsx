@@ -1,6 +1,6 @@
 "use client";
 
-import {useLocale, useTranslations} from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     CalendarClock,
     ChevronLeft,
@@ -13,7 +13,7 @@ import {
     Search,
     SquareCheck,
 } from "lucide-react";
-import {useSearchParams} from "next/navigation";
+import { useSearchParams } from "next/navigation";
 import {
     Suspense,
     useDeferredValue,
@@ -22,18 +22,18 @@ import {
     useState,
 } from "react";
 
-import {Avatar} from "@/components/ui/avatar";
-import {Badge, priorityTone, statusTone} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
-import {Input, Select} from "@/components/ui/input";
-import {PageHeader} from "@/components/ui/layout";
-import {EmptyState, ListSkeleton} from "@/components/ui/states";
-import {SegmentedControl} from "@/components/ui/tabs";
-import {useToast} from "@/components/ui/toast";
-import {TaskDetailDialog} from "@/components/tasks/task-detail-dialog";
-import {TaskFormDialog} from "@/components/tasks/task-form-dialog";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {taskPriorities, taskStatuses} from "@/lib/domain";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge, priorityTone, statusTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { PageHeader } from "@/components/ui/layout";
+import { EmptyState, ListSkeleton } from "@/components/ui/states";
+import { SegmentedControl } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
+import { TaskDetailDialog } from "@/components/tasks/task-detail-dialog";
+import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { taskPriorities, taskStatuses } from "@/lib/domain";
 import {
     useGetProjectsQuery,
     useGetTasksQuery,
@@ -46,13 +46,8 @@ import type {
     TaskListItem,
     TaskListArgs,
 } from "@/lib/redux/types";
-import {
-    cn,
-    formatDate,
-    getApiErrorMessage,
-    isOverdue,
-} from "@/lib/utils";
-import {useRouter} from "@/i18n/navigation";
+import { cn, formatDate, getApiErrorMessage, isOverdue } from "@/lib/utils";
+import { useRouter } from "@/i18n/navigation";
 
 type ViewMode = "list" | "kanban";
 
@@ -67,7 +62,7 @@ function TasksPageContent() {
     const router = useRouter();
     const toast = useToast();
     const searchParams = useSearchParams();
-    const {workspace, canEdit} = useWorkspace();
+    const { workspace, canEdit } = useWorkspace();
 
     const [view, setView] = useState<ViewMode>("list");
     const [search, setSearch] = useState(searchParams.get("search") ?? "");
@@ -78,6 +73,7 @@ function TasksPageContent() {
     const [assignee, setAssignee] = useState<string>("");
     const [projectId, setProjectId] = useState<string>("");
     const [page, setPage] = useState(1);
+    const [archived, setArchived] = useState(false);
 
     const [detailId, setDetailId] = useState<string | null>(
         searchParams.get("task"),
@@ -85,17 +81,18 @@ function TasksPageContent() {
     const [formOpen, setFormOpen] = useState(searchParams.get("new") === "1");
     const [editing, setEditing] = useState<TaskDetail | null>(null);
 
-    const {data: projectsData} = useGetProjectsQuery({
+    const { data: projectsData } = useGetProjectsQuery({
         workspaceId: workspace.id,
         pageSize: 100,
     });
-    const {data: membersData} = useGetWorkspaceMembersQuery({
+    const { data: membersData } = useGetWorkspaceMembersQuery({
         workspaceId: workspace.id,
     });
 
     const queryArgs = useMemo<TaskListArgs>(
         () => ({
             workspaceId: workspace.id,
+            archived,
             search: deferredSearch.trim() || undefined,
             status: (status || undefined) as TaskListArgs["status"],
             priority: (priority || undefined) as TaskListArgs["priority"],
@@ -107,6 +104,7 @@ function TasksPageContent() {
         }),
         [
             workspace.id,
+            archived,
             deferredSearch,
             status,
             priority,
@@ -118,7 +116,7 @@ function TasksPageContent() {
         ],
     );
 
-    const {data, isLoading, isFetching} = useGetTasksQuery(queryArgs);
+    const { data, isLoading, isFetching } = useGetTasksQuery(queryArgs);
     const [updateTask] = useUpdateTaskMutation();
 
     const projects = useMemo(() => projectsData?.items ?? [], [projectsData]);
@@ -129,7 +127,10 @@ function TasksPageContent() {
     }, [projects]);
 
     const memberById = useMemo(() => {
-        const map = new Map<string, {name: string; avatarUrl: string | null}>();
+        const map = new Map<
+            string,
+            { name: string; avatarUrl: string | null }
+        >();
         for (const member of membersData ?? []) {
             map.set(member.user.id, {
                 name: member.user.name,
@@ -202,7 +203,7 @@ function TasksPageContent() {
         try {
             await updateTask({
                 id: taskId,
-                data: {status: nextStatus as TaskListItem["status"]},
+                data: { status: nextStatus as TaskListItem["status"] },
             }).unwrap();
             toast.success(t("statusUpdated"));
         } catch (error) {
@@ -236,6 +237,15 @@ function TasksPageContent() {
                                 },
                             ]}
                         />
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setArchived(!archived);
+                                setPage(1);
+                            }}
+                        >
+                            {t(archived ? "activeTasks" : "archivedTasks")}
+                        </Button>
                         <Button onClick={openCreate} disabled={!canEdit}>
                             <Plus size={17} />
                             {t("createTask")}
@@ -266,7 +276,7 @@ function TasksPageContent() {
                         className="w-auto min-w-[130px]"
                     >
                         <option value="">
-                            {t("statusFilter", {value: tCommon("all")})}
+                            {t("statusFilter", { value: tCommon("all") })}
                         </option>
                         {taskStatuses.map((item) => (
                             <option key={item} value={item}>
@@ -282,7 +292,7 @@ function TasksPageContent() {
                         className="w-auto min-w-[130px]"
                     >
                         <option value="">
-                            {t("priorityFilter", {value: tCommon("all")})}
+                            {t("priorityFilter", { value: tCommon("all") })}
                         </option>
                         {taskPriorities.map((item) => (
                             <option key={item} value={item}>
@@ -298,7 +308,7 @@ function TasksPageContent() {
                         className="w-auto min-w-[130px]"
                     >
                         <option value="">
-                            {t("dueFilter", {value: tCommon("all")})}
+                            {t("dueFilter", { value: tCommon("all") })}
                         </option>
                         <option value="overdue">{tCommon("overdue")}</option>
                         <option value="today">{tCommon("today")}</option>
@@ -312,7 +322,7 @@ function TasksPageContent() {
                         className="w-auto min-w-[140px] max-w-[200px]"
                     >
                         <option value="">
-                            {t("projectFilter", {value: tCommon("all")})}
+                            {t("projectFilter", { value: tCommon("all") })}
                         </option>
                         {projects.map((project) => (
                             <option key={project.id} value={project.id}>
@@ -328,20 +338,21 @@ function TasksPageContent() {
                         className="w-auto min-w-[140px] max-w-[200px]"
                     >
                         <option value="">
-                            {t("assigneeFilter", {value: tCommon("all")})}
+                            {t("assigneeFilter", { value: tCommon("all") })}
                         </option>
                         {(membersData ?? []).map((member) => (
-                            <option
-                                key={member.user.id}
-                                value={member.user.id}
-                            >
+                            <option key={member.user.id} value={member.user.id}>
                                 {member.user.name}
                             </option>
                         ))}
                     </Select>
 
                     {hasFilters ? (
-                        <Button variant="ghost" size="sm" onClick={clearFilters}>
+                        <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={clearFilters}
+                        >
                             <FilterX size={14} />
                             {t("clearFilters")}
                         </Button>
@@ -425,10 +436,13 @@ function TasksPageContent() {
                                         </p>
                                     ) : (
                                         items.map((task) => {
-                                            const project =
-                                                projectById.get(task.projectId);
+                                            const project = projectById.get(
+                                                task.projectId,
+                                            );
                                             const person = task.assigneeId
-                                                ? memberById.get(task.assigneeId)
+                                                ? memberById.get(
+                                                      task.assigneeId,
+                                                  )
                                                 : null;
                                             const overdue = isOverdue(
                                                 task.dueDate,
@@ -457,7 +471,8 @@ function TasksPageContent() {
                                                         <Badge
                                                             tone={
                                                                 priorityTone[
-                                                                    task.priority
+                                                                    task
+                                                                        .priority
                                                                 ]
                                                             }
                                                             className="shrink-0 px-1.5 text-[9px]"
@@ -558,9 +573,7 @@ function TasksPageContent() {
                                     return (
                                         <tr
                                             key={task.id}
-                                            onClick={() =>
-                                                openDetail(task.id)
-                                            }
+                                            onClick={() => openDetail(task.id)}
                                             className="cursor-pointer border-b border-border/60 transition-colors last:border-0 hover:bg-surface-hover/70"
                                         >
                                             <td className="max-w-[300px] px-4 py-3">
@@ -582,7 +595,9 @@ function TasksPageContent() {
                                                     ))}
                                                     {task.estimateMinutes ? (
                                                         <span className="text-[10px] text-text-muted">
-                                                            {task.estimateMinutes}{" "}
+                                                            {
+                                                                task.estimateMinutes
+                                                            }{" "}
                                                             min
                                                         </span>
                                                     ) : null}
@@ -741,9 +756,7 @@ function TasksPageContent() {
                 onClose={() => {
                     setFormOpen(false);
                     setEditing(null);
-                    const params = new URLSearchParams(
-                        searchParams.toString(),
-                    );
+                    const params = new URLSearchParams(searchParams.toString());
                     params.delete("new");
                     const query = params.toString();
                     router.replace(query ? `/tasks?${query}` : "/tasks");

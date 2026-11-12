@@ -85,13 +85,7 @@ export type DepartmentWithCounts = Department & {
 
 export type DepartmentMember = Pick<
     User,
-    | "id"
-    | "name"
-    | "email"
-    | "role"
-    | "jobTitle"
-    | "avatarUrl"
-    | "isActive"
+    "id" | "name" | "email" | "role" | "jobTitle" | "avatarUrl" | "isActive"
 >;
 
 export type DepartmentDetail = DepartmentWithCounts & {
@@ -114,6 +108,8 @@ export type User = {
 };
 
 export type UserSettings = {
+    taskReminders: boolean;
+    reminderHours: string;
     userId: string;
     theme: ThemeValue;
     locale: LocaleValue;
@@ -167,6 +163,7 @@ export type Workspace = {
 };
 
 export type WorkspaceListItem = Workspace & {
+    accessScope?: "self" | "team" | "workspace";
     role: WorkspaceRole | null;
     memberCount: number;
     projectCount: number;
@@ -263,6 +260,7 @@ export type Tag = {
 };
 
 export type Task = {
+    archivedAt: string | null;
     id: string;
     workspaceId: string;
     projectId: string;
@@ -364,8 +362,8 @@ export type AnalyticsOverview = {
         overdue: number;
         completionRate: number;
     };
-    byStatus: Array<{status: TaskStatus; count: number}>;
-    byPriority: Array<{priority: TaskPriority; count: number}>;
+    byStatus: Array<{ status: TaskStatus; count: number }>;
+    byPriority: Array<{ priority: TaskPriority; count: number }>;
     byDepartment: Array<{
         departmentId: string;
         name: string;
@@ -454,9 +452,9 @@ export type AiTaskDraft = {
     publishedTaskId: string | null;
     createdAt: IsoDateString;
     updatedAt: IsoDateString;
-    project: {id: string; name: string; color: string} | null;
-    department: {id: string; name: string; color: string} | null;
-    assignee: {id: string; name: string; avatarUrl: string | null} | null;
+    project: { id: string; name: string; color: string } | null;
+    department: { id: string; name: string; color: string } | null;
+    assignee: { id: string; name: string; avatarUrl: string | null } | null;
 };
 
 export type AiTaskDraftList = {
@@ -504,6 +502,7 @@ export type LoginInput = {
 };
 
 export type DepartmentCreateInput = {
+    workspaceId?: string;
     name: string;
     slug: string;
     description?: string | null;
@@ -513,6 +512,7 @@ export type DepartmentCreateInput = {
 export type DepartmentUpdateInput = Partial<DepartmentCreateInput>;
 
 export type UserCreateInput = {
+    workspaceId?: string;
     name: string;
     email: string;
     password: string;
@@ -565,7 +565,9 @@ export type ProjectCreateInput = {
     dueDate?: string | null;
 };
 
-export type ProjectUpdateInput = Partial<Omit<ProjectCreateInput, "workspaceId">>;
+export type ProjectUpdateInput = Partial<
+    Omit<ProjectCreateInput, "workspaceId">
+>;
 
 export type ProjectListArgs = PageArgs & {
     workspaceId?: string;
@@ -591,9 +593,12 @@ export type TaskCreateInput = {
     tagIds?: string[];
 };
 
-export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "workspaceId">>;
+export type TaskUpdateInput = Partial<Omit<TaskCreateInput, "workspaceId">> & {
+    archived?: boolean;
+};
 
 export type TaskListArgs = PageArgs & {
+    archived?: boolean;
     workspaceId?: string;
     projectId?: string;
     departmentId?: string;
@@ -690,6 +695,8 @@ export type AiTaskPublishInput = {
 };
 
 export type SettingsUpdateInput = {
+    taskReminders?: boolean;
+    reminderHours?: string;
     theme?: ThemeValue;
     locale?: LocaleValue;
     dailySummaryEmail?: boolean;

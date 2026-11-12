@@ -1,7 +1,8 @@
-import {eq} from "drizzle-orm";
+import { calendarScope, assertCalendarRelations } from "@/lib/auth/scope";
+import { and, eq } from "drizzle-orm";
 
-import {db} from "@/db";
-import {calendarEvents} from "@/db/schema";
+import { db } from "@/db";
+import { calendarEvents } from "@/db/schema";
 import {
     ApiError,
     handleRoute,
@@ -9,20 +10,20 @@ import {
     ok,
     parseBody,
 } from "@/lib/api/http";
-import {calendarEventUpdateSchema} from "@/lib/api/schemas";
-import {requireWorkspaceMember} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { calendarEventUpdateSchema } from "@/lib/api/schemas";
+import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
-type Params = {params: Promise<{id: string}>};
+type Params = { params: Promise<{ id: string }> };
 
-export async function GET(_request: Request, {params}: Params) {
+export async function GET(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const [event] = await db
             .select()
             .from(calendarEvents)
-            .where(eq(calendarEvents.id, id))
+            .where(and(eq(calendarEvents.id, id), await calendarScope(user)))
             .limit(1);
 
         if (!event) {
@@ -40,14 +41,14 @@ export async function GET(_request: Request, {params}: Params) {
     });
 }
 
-export async function PATCH(request: Request, {params}: Params) {
+export async function PATCH(request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const [event] = await db
             .select()
             .from(calendarEvents)
-            .where(eq(calendarEvents.id, id))
+            .where(and(eq(calendarEvents.id, id), await calendarScope(user)))
             .limit(1);
 
         if (!event) {
@@ -56,6 +57,10 @@ export async function PATCH(request: Request, {params}: Params) {
 
         await requireWorkspaceMember(user, event.workspaceId);
         const input = await parseBody(request, calendarEventUpdateSchema);
+        await assertCalendarRelations(user, event.workspaceId, {
+            ...event,
+            ...input,
+        });
 
         const startAt = input.startAt ? new Date(input.startAt) : event.startAt;
         const endAt = input.endAt ? new Date(input.endAt) : event.endAt;
@@ -72,38 +77,38 @@ export async function PATCH(request: Request, {params}: Params) {
             .set({
                 ...(input.departmentId === undefined
                     ? {}
-                    : {departmentId: input.departmentId}),
+                    : { departmentId: input.departmentId }),
                 ...(input.projectId === undefined
                     ? {}
-                    : {projectId: input.projectId}),
-                ...(input.taskId === undefined ? {} : {taskId: input.taskId}),
-                ...(input.title === undefined ? {} : {title: input.title}),
+                    : { projectId: input.projectId }),
+                ...(input.taskId === undefined ? {} : { taskId: input.taskId }),
+                ...(input.title === undefined ? {} : { title: input.title }),
                 ...(input.description === undefined
                     ? {}
-                    : {description: input.description}),
+                    : { description: input.description }),
                 startAt,
                 endAt,
-                ...(input.allDay === undefined ? {} : {allDay: input.allDay}),
+                ...(input.allDay === undefined ? {} : { allDay: input.allDay }),
                 ...(input.location === undefined
                     ? {}
-                    : {location: input.location}),
+                    : { location: input.location }),
                 updatedAt: new Date(),
             })
-            .where(eq(calendarEvents.id, id))
+            .where(and(eq(calendarEvents.id, id), await calendarScope(user)))
             .returning();
 
         return ok(updated);
     });
 }
 
-export async function DELETE(_request: Request, {params}: Params) {
+export async function DELETE(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const [event] = await db
-            .select({workspaceId: calendarEvents.workspaceId})
+            .select({ workspaceId: calendarEvents.workspaceId })
             .from(calendarEvents)
-            .where(eq(calendarEvents.id, id))
+            .where(and(eq(calendarEvents.id, id), await calendarScope(user)))
             .limit(1);
 
         if (!event) {
@@ -111,7 +116,9 @@ export async function DELETE(_request: Request, {params}: Params) {
         }
 
         await requireWorkspaceMember(user, event.workspaceId);
-        await db.delete(calendarEvents).where(eq(calendarEvents.id, id));
+        await db
+            .delete(calendarEvents)
+            .where(and(eq(calendarEvents.id, id), await calendarScope(user)));
         return noContent();
     });
 }

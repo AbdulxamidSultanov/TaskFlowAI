@@ -1,21 +1,21 @@
 "use client";
 
-import {useTranslations} from "next-intl";
-import {useEffect, useState} from "react";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
 
-import {Button} from "@/components/ui/button";
-import {Checkbox, Field, Input, Select} from "@/components/ui/input";
-import {Modal} from "@/components/ui/modal";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {userRoles} from "@/lib/domain";
+import { Button } from "@/components/ui/button";
+import { Checkbox, Field, Input, Select } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { userRoles } from "@/lib/domain";
 import {
     useCreateUserMutation,
     useGetDepartmentsQuery,
     useUpdateUserMutation,
 } from "@/lib/redux/api";
-import type {User, UserCreateInput, UserUpdateInput} from "@/lib/redux/types";
-import {getApiErrorMessage} from "@/lib/utils";
+import type { User, UserCreateInput, UserUpdateInput } from "@/lib/redux/types";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const timezones = [
     "Asia/Tashkent",
@@ -42,8 +42,8 @@ export function UserFormDialog({
     const tCommon = useTranslations("common");
     const tRole = useTranslations("role");
     const toast = useToast();
-    const {isGlobalAdmin, canManageUsers} = useWorkspace();
-    const {data: departments} = useGetDepartmentsQuery(undefined, {
+    const { workspace, isGlobalAdmin, canManageUsers } = useWorkspace();
+    const { data: departments } = useGetDepartmentsQuery(undefined, {
         skip: !open,
     });
 
@@ -115,12 +115,13 @@ export function UserFormDialog({
                     timezone,
                     avatarUrl: avatarUrl.trim() || null,
                     isActive,
-                    ...(password ? {password} : {}),
+                    ...(password ? { password } : {}),
                 };
-                await updateUser({id: user.id, data}).unwrap();
+                await updateUser({ id: user.id, data }).unwrap();
                 toast.success(t("updated"));
             } else {
                 const data: UserCreateInput = {
+                    workspaceId: workspace.id,
                     name: name.trim(),
                     email: email.trim(),
                     password,
@@ -163,22 +164,14 @@ export function UserFormDialog({
             }
         >
             <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                    label={t("name")}
-                    required
-                    error={errors.name}
-                >
+                <Field label={t("name")} required error={errors.name}>
                     <Input
                         value={name}
                         onChange={(event) => setName(event.target.value)}
                         autoFocus
                     />
                 </Field>
-                <Field
-                    label={t("email")}
-                    required
-                    error={errors.email}
-                >
+                <Field label={t("email")} required error={errors.email}>
                     <Input
                         type="email"
                         value={email}
@@ -217,9 +210,7 @@ export function UserFormDialog({
                         disabled={!isGlobalAdmin}
                     >
                         {userRoles
-                            .filter(
-                                (item) => isGlobalAdmin || item !== "admin",
-                            )
+                            .filter((item) => isGlobalAdmin || item !== "admin")
                             .map((item) => (
                                 <option key={item} value={item}>
                                     {tRole(item)}

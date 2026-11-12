@@ -1,6 +1,8 @@
 "use client";
+import { Invitations } from "@/components/team/invitations";
+import { OrganizationTree } from "@/components/team/organization-tree";
 
-import {useLocale, useTranslations} from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     Building2,
     ChevronLeft,
@@ -13,22 +15,22 @@ import {
     UserRound,
     Users,
 } from "lucide-react";
-import {useDeferredValue, useState} from "react";
+import { useDeferredValue, useState } from "react";
 
-import {DepartmentFormDialog} from "@/components/team/department-form-dialog";
-import {MemberFormDialog} from "@/components/team/member-form-dialog";
-import {UserFormDialog} from "@/components/team/user-form-dialog";
-import {Avatar} from "@/components/ui/avatar";
-import {Badge, roleTone} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
-import {Input, Select} from "@/components/ui/input";
-import {PageHeader, StatCard} from "@/components/ui/layout";
-import {ConfirmDialog} from "@/components/ui/modal";
-import {EmptyState, ListSkeleton} from "@/components/ui/states";
-import {Tabs} from "@/components/ui/tabs";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {userRoles, workspaceRoles} from "@/lib/domain";
+import { DepartmentFormDialog } from "@/components/team/department-form-dialog";
+import { MemberFormDialog } from "@/components/team/member-form-dialog";
+import { UserFormDialog } from "@/components/team/user-form-dialog";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge, roleTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input, Select } from "@/components/ui/input";
+import { PageHeader, StatCard } from "@/components/ui/layout";
+import { ConfirmDialog } from "@/components/ui/modal";
+import { EmptyState, ListSkeleton } from "@/components/ui/states";
+import { Tabs } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { userRoles, workspaceRoles } from "@/lib/domain";
 import {
     useDeleteDepartmentMutation,
     useDeleteUserMutation,
@@ -38,8 +40,8 @@ import {
     useRemoveWorkspaceMemberMutation,
     useUpdateWorkspaceMemberMutation,
 } from "@/lib/redux/api";
-import type {DepartmentWithCounts, User} from "@/lib/redux/types";
-import {formatDate, getApiErrorMessage} from "@/lib/utils";
+import type { DepartmentWithCounts, User } from "@/lib/redux/types";
+import { formatDate, getApiErrorMessage } from "@/lib/utils";
 
 type TabValue = "members" | "people" | "departments";
 
@@ -49,8 +51,13 @@ export default function TeamPage() {
     const tRole = useTranslations("role");
     const tWsRole = useTranslations("workspaceRole");
     const locale = useLocale();
-    const {user, workspace, canManageWorkspace, canManageUsers, canManageDepartments} =
-        useWorkspace();
+    const {
+        user,
+        workspace,
+        canManageWorkspace,
+        canManageUsers,
+        canManageDepartments,
+    } = useWorkspace();
 
     const [tab, setTab] = useState<TabValue>("members");
     const [search, setSearch] = useState("");
@@ -75,11 +82,11 @@ export default function TeamPage() {
 
     const toast = useToast();
 
-    const {data: members, isLoading: membersLoading} =
-        useGetWorkspaceMembersQuery({workspaceId: workspace.id});
-    const {data: departments, isLoading: departmentsLoading} =
+    const { data: members, isLoading: membersLoading } =
+        useGetWorkspaceMembersQuery({ workspaceId: workspace.id });
+    const { data: departments, isLoading: departmentsLoading } =
         useGetDepartmentsQuery();
-    const {data: usersData, isLoading: usersLoading} = useGetUsersQuery({
+    const { data: usersData, isLoading: usersLoading } = useGetUsersQuery({
         search: deferredSearch.trim() || undefined,
         role: (roleFilter || undefined) as User["role"] | undefined,
         departmentId: departmentFilter || undefined,
@@ -147,7 +154,7 @@ export default function TeamPage() {
     const confirmDeleteUser = async () => {
         if (!deletingUser) return;
         try {
-            await deleteUser({id: deletingUser.id}).unwrap();
+            await deleteUser({ id: deletingUser.id }).unwrap();
             toast.success(t("userDeleted"));
             setDeletingUser(null);
         } catch (error) {
@@ -158,13 +165,11 @@ export default function TeamPage() {
     const confirmDeleteDepartment = async () => {
         if (!deletingDepartment) return;
         try {
-            await deleteDepartment({id: deletingDepartment.id}).unwrap();
+            await deleteDepartment({ id: deletingDepartment.id }).unwrap();
             toast.success(t("departmentDeleted"));
             setDeletingDepartment(null);
         } catch (error) {
-            toast.error(
-                getApiErrorMessage(error, t("departmentDeleteError")),
-            );
+            toast.error(getApiErrorMessage(error, t("departmentDeleteError")));
         }
     };
 
@@ -173,7 +178,7 @@ export default function TeamPage() {
             <PageHeader
                 eyebrow={t("eyebrow")}
                 title={t("title")}
-                description={t("description", {workspace: workspace.name})}
+                description={t("description", { workspace: workspace.name })}
                 actions={
                     <>
                         {tab === "members" && canManageWorkspace ? (
@@ -207,6 +212,9 @@ export default function TeamPage() {
                     </>
                 }
             />
+
+            <OrganizationTree />
+            <Invitations />
 
             <div className="grid gap-3 sm:grid-cols-3">
                 <StatCard
@@ -289,9 +297,7 @@ export default function TeamPage() {
                                                         )
                                                     }
                                                     className="h-8 w-auto min-w-[110px] text-xs"
-                                                    aria-label={t(
-                                                        "changeRole",
-                                                    )}
+                                                    aria-label={t("changeRole")}
                                                 >
                                                     {workspaceRoles
                                                         .filter(
@@ -327,8 +333,8 @@ export default function TeamPage() {
                                                     title={t("removeMember")}
                                                     onClick={() =>
                                                         setRemovingMember({
-                                                            userId:
-                                                                member.user.id,
+                                                            userId: member.user
+                                                                .id,
                                                             name: member.user
                                                                 .name,
                                                         })
@@ -494,7 +500,9 @@ export default function TeamPage() {
                                                             aria-label={t(
                                                                 "editUser",
                                                             )}
-                                                            title={t("editUser")}
+                                                            title={t(
+                                                                "editUser",
+                                                            )}
                                                             onClick={() => {
                                                                 setEditingUser(
                                                                     item,
@@ -505,9 +513,7 @@ export default function TeamPage() {
                                                             }}
                                                             className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-primary"
                                                         >
-                                                            <Pencil
-                                                                size={14}
-                                                            />
+                                                            <Pencil size={14} />
                                                         </button>
                                                         {item.id !== user.id ? (
                                                             <button
@@ -541,10 +547,8 @@ export default function TeamPage() {
                             <div className="flex items-center justify-between gap-2 border-t border-border px-4 py-3">
                                 <p className="text-xs text-text-muted">
                                     {tCommon("pageOf", {
-                                        page:
-                                            usersData?.pagination.page ?? 1,
-                                        pages:
-                                            usersData?.pagination.pages ?? 1,
+                                        page: usersData?.pagination.page ?? 1,
+                                        pages: usersData?.pagination.pages ?? 1,
                                     })}
                                 </p>
                                 <div className="flex gap-2">
@@ -553,8 +557,8 @@ export default function TeamPage() {
                                         variant="outline"
                                         aria-label={tCommon("previous")}
                                         disabled={
-                                            (usersData?.pagination.page ??
-                                                1) <= 1
+                                            (usersData?.pagination.page ?? 1) <=
+                                            1
                                         }
                                         onClick={() =>
                                             setPage((value) =>
@@ -569,8 +573,7 @@ export default function TeamPage() {
                                         variant="outline"
                                         aria-label={tCommon("next")}
                                         disabled={
-                                            (usersData?.pagination.page ??
-                                                1) >=
+                                            (usersData?.pagination.page ?? 1) >=
                                             (usersData?.pagination.pages ?? 1)
                                         }
                                         onClick={() =>
@@ -604,98 +607,101 @@ export default function TeamPage() {
                 ) : (
                     <div className="rounded-2xl border border-border bg-surface p-3 shadow-sm">
                         <div className="scroll-area grid max-h-[min(65dvh,640px)] gap-3 overflow-y-auto pr-1 md:grid-cols-2 xl:grid-cols-3">
-                        {(departments ?? []).map((department) => (
-                            <div
-                                key={department.id}
-                                className="relative overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-sm"
-                            >
+                            {(departments ?? []).map((department) => (
                                 <div
-                                    className="absolute inset-x-0 top-0 h-1"
-                                    style={{
-                                        backgroundColor: department.color,
-                                    }}
-                                />
-                                <div className="flex items-start justify-between gap-2">
-                                    <div className="min-w-0">
-                                        <p className="truncate text-sm font-semibold text-text-primary">
-                                            {department.name}
-                                        </p>
-                                        <p className="truncate text-[11px] text-text-muted">
-                                            @{department.slug}
-                                        </p>
-                                    </div>
-                                    {canManageDepartments ? (
-                                        <div className="flex shrink-0 gap-0.5">
-                                            <button
-                                                type="button"
-                                                aria-label={t(
-                                                    "editDepartment",
-                                                )}
-                                                title={t("editDepartment")}
-                                                onClick={() => {
-                                                    setEditingDepartment(
-                                                        department,
-                                                    );
-                                                    setDepartmentOpen(true);
-                                                }}
-                                                className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-primary"
-                                            >
-                                                <Pencil size={14} />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                aria-label={t(
-                                                    "deleteDepartment",
-                                                )}
-                                                title={t(
-                                                    "deleteDepartment",
-                                                )}
-                                                onClick={() =>
-                                                    setDeletingDepartment(
-                                                        department,
-                                                    )
-                                                }
-                                                className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-error/10 hover:text-error"
-                                            >
-                                                <Trash2 size={14} />
-                                            </button>
-                                        </div>
-                                    ) : null}
-                                </div>
-
-                                <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-text-secondary">
-                                    {department.description ??
-                                        t("noDepartmentDescription")}
-                                </p>
-
-                                <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
-                                    <div className="flex gap-3 text-[11px] text-text-muted">
-                                        <span>
-                                            {t("peopleCount", {
-                                                count: department.counts.users,
-                                            })}
-                                        </span>
-                                        <span>
-                                            {t("projectsCount", {
-                                                count:
-                                                    department.counts.projects,
-                                            })}
-                                        </span>
-                                        <span>
-                                            {t("tasksCount", {
-                                                count: department.counts.tasks,
-                                            })}
-                                        </span>
-                                    </div>
-                                    <span
-                                        className="size-2.5 rounded-full"
+                                    key={department.id}
+                                    className="relative overflow-hidden rounded-2xl border border-border bg-surface p-4 shadow-sm"
+                                >
+                                    <div
+                                        className="absolute inset-x-0 top-0 h-1"
                                         style={{
                                             backgroundColor: department.color,
                                         }}
                                     />
+                                    <div className="flex items-start justify-between gap-2">
+                                        <div className="min-w-0">
+                                            <p className="truncate text-sm font-semibold text-text-primary">
+                                                {department.name}
+                                            </p>
+                                            <p className="truncate text-[11px] text-text-muted">
+                                                @{department.slug}
+                                            </p>
+                                        </div>
+                                        {canManageDepartments ? (
+                                            <div className="flex shrink-0 gap-0.5">
+                                                <button
+                                                    type="button"
+                                                    aria-label={t(
+                                                        "editDepartment",
+                                                    )}
+                                                    title={t("editDepartment")}
+                                                    onClick={() => {
+                                                        setEditingDepartment(
+                                                            department,
+                                                        );
+                                                        setDepartmentOpen(true);
+                                                    }}
+                                                    className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-surface-hover hover:text-primary"
+                                                >
+                                                    <Pencil size={14} />
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    aria-label={t(
+                                                        "deleteDepartment",
+                                                    )}
+                                                    title={t(
+                                                        "deleteDepartment",
+                                                    )}
+                                                    onClick={() =>
+                                                        setDeletingDepartment(
+                                                            department,
+                                                        )
+                                                    }
+                                                    className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-error/10 hover:text-error"
+                                                >
+                                                    <Trash2 size={14} />
+                                                </button>
+                                            </div>
+                                        ) : null}
+                                    </div>
+
+                                    <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-text-secondary">
+                                        {department.description ??
+                                            t("noDepartmentDescription")}
+                                    </p>
+
+                                    <div className="mt-3 flex items-center justify-between border-t border-border pt-3">
+                                        <div className="flex gap-3 text-[11px] text-text-muted">
+                                            <span>
+                                                {t("peopleCount", {
+                                                    count: department.counts
+                                                        .users,
+                                                })}
+                                            </span>
+                                            <span>
+                                                {t("projectsCount", {
+                                                    count: department.counts
+                                                        .projects,
+                                                })}
+                                            </span>
+                                            <span>
+                                                {t("tasksCount", {
+                                                    count: department.counts
+                                                        .tasks,
+                                                })}
+                                            </span>
+                                        </div>
+                                        <span
+                                            className="size-2.5 rounded-full"
+                                            style={{
+                                                backgroundColor:
+                                                    department.color,
+                                            }}
+                                        />
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            ))}
                         </div>
                     </div>
                 )

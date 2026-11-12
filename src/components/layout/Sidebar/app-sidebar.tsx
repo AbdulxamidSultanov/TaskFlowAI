@@ -1,8 +1,9 @@
 "use client";
 
-import {useTranslations} from "next-intl";
+import { useTranslations } from "next-intl";
 import {
     CalendarDays,
+    Clock,
     ChartNoAxesColumn,
     ChevronsUpDown,
     FolderKanban,
@@ -17,27 +18,28 @@ import {
     Users,
     X,
 } from "lucide-react";
-import {useEffect, useRef, useState} from "react";
+import { useEffect, useRef, useState } from "react";
 
-import {Avatar} from "@/components/ui/avatar";
-import {Badge, roleTone} from "@/components/ui/badge";
-import {ProgressBar} from "@/components/ui/layout";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {Link, useRouter} from "@/i18n/navigation";
-import {useGetProjectsQuery, useLogoutMutation} from "@/lib/redux/api";
-import {useAppDispatch} from "@/lib/redux/hooks";
-import {setActiveWorkspace} from "@/lib/redux/workspace-slice";
-import {cn, fileSize, getApiErrorMessage} from "@/lib/utils";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge, roleTone } from "@/components/ui/badge";
+import { ProgressBar } from "@/components/ui/layout";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { Link, useRouter } from "@/i18n/navigation";
+import { useGetProjectsQuery, useLogoutMutation } from "@/lib/redux/api";
+import { useAppDispatch } from "@/lib/redux/hooks";
+import { setActiveWorkspace } from "@/lib/redux/workspace-slice";
+import { cn, fileSize, getApiErrorMessage } from "@/lib/utils";
 
 const navItems = [
-    {href: "/dashboard", key: "dashboard", icon: House},
-    {href: "/tasks", key: "tasks", icon: SquareCheck},
-    {href: "/projects", key: "projects", icon: FolderKanban},
-    {href: "/calendar", key: "calendar", icon: CalendarDays},
-    {href: "/analytics", key: "analytics", icon: ChartNoAxesColumn},
-    {href: "/ai-assistant", key: "aiAssistant", icon: Sparkles},
-    {href: "/team", key: "team", icon: Users},
+    { href: "/dashboard", key: "dashboard", icon: House },
+    { href: "/tasks", key: "tasks", icon: SquareCheck },
+    { href: "/projects", key: "projects", icon: FolderKanban },
+    { href: "/calendar", key: "calendar", icon: CalendarDays },
+    { href: "/time-management", key: "timeManagement", icon: Clock },
+    { href: "/analytics", key: "analytics", icon: ChartNoAxesColumn },
+    { href: "/ai-assistant", key: "aiAssistant", icon: Sparkles },
+    { href: "/team", key: "team", icon: Users },
 ] as const;
 
 export function AppSidebar({
@@ -54,18 +56,13 @@ export function AppSidebar({
     const router = useRouter();
     const toast = useToast();
     const dispatch = useAppDispatch();
-    const {
-        workspace,
-        workspaces,
-        user,
-        role,
-        canManageWorkspace,
-    } = useWorkspace();
+    const { workspace, workspaces, user, role, canManageWorkspace } =
+        useWorkspace();
     const [switcherOpen, setSwitcherOpen] = useState(false);
     const switcherRef = useRef<HTMLDivElement>(null);
     const [logout, logoutState] = useLogoutMutation();
 
-    const {data: projectsData} = useGetProjectsQuery({
+    const { data: projectsData } = useGetProjectsQuery({
         workspaceId: workspace.id,
         pageSize: 6,
     });
@@ -293,7 +290,7 @@ export function AppSidebar({
                             >
                                 <span
                                     className="size-2 shrink-0 rounded-full"
-                                    style={{backgroundColor: project.color}}
+                                    style={{ backgroundColor: project.color }}
                                 />
                                 <span className="min-w-0 flex-1 truncate">
                                     {project.name}

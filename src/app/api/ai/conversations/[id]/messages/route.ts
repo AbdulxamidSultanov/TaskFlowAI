@@ -1,20 +1,15 @@
-import {and, asc, count, eq, lt, ne} from "drizzle-orm";
+import { taskScope } from "@/lib/auth/scope";
+import { and, asc, count, eq, lt, ne } from "drizzle-orm";
 
-import {db} from "@/db";
-import {aiConversations, aiMessages, tasks} from "@/db/schema";
-import {
-    ApiError,
-    created,
-    handleRoute,
-    ok,
-    parseBody,
-} from "@/lib/api/http";
-import {aiMessageCreateSchema} from "@/lib/api/schemas";
-import {assistantReply} from "@/lib/ai/planner";
-import {requireWorkspaceMember} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { aiConversations, aiMessages, tasks } from "@/db/schema";
+import { ApiError, created, handleRoute, ok, parseBody } from "@/lib/api/http";
+import { aiMessageCreateSchema } from "@/lib/api/schemas";
+import { assistantReply } from "@/lib/ai/planner";
+import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
-type Params = {params: Promise<{id: string}>};
+type Params = { params: Promise<{ id: string }> };
 
 async function requireConversation(userId: string, conversationId: string) {
     const [conversation] = await db
@@ -34,10 +29,10 @@ async function requireConversation(userId: string, conversationId: string) {
     return conversation;
 }
 
-export async function GET(_request: Request, {params}: Params) {
+export async function GET(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const conversation = await requireConversation(user.id, id);
         await requireWorkspaceMember(user, conversation.workspaceId, [
             "owner",
@@ -56,10 +51,10 @@ export async function GET(_request: Request, {params}: Params) {
     });
 }
 
-export async function POST(request: Request, {params}: Params) {
+export async function POST(request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const input = await parseBody(request, aiMessageCreateSchema);
         const conversation = await requireConversation(user.id, id);
         await requireWorkspaceMember(user, conversation.workspaceId);
@@ -74,48 +69,54 @@ export async function POST(request: Request, {params}: Params) {
             .returning();
 
         const workspaceId = conversation.workspaceId;
+        const scope = await taskScope(user, workspaceId);
         const now = new Date();
-        const [openRows, overdueRows, completedRows, nextRows] = await Promise.all([
-            db
-                .select({value: count()})
-                .from(tasks)
-                .where(
-                    and(
-                        eq(tasks.workspaceId, workspaceId),
-                        ne(tasks.status, "completed"),
+        const [openRows, overdueRows, completedRows, nextRows] =
+            await Promise.all([
+                db
+                    .select({ value: count() })
+                    .from(tasks)
+                    .where(
+                        and(
+                            scope,
+                            eq(tasks.workspaceId, workspaceId),
+                            ne(tasks.status, "completed"),
+                        ),
                     ),
-                ),
-            db
-                .select({value: count()})
-                .from(tasks)
-                .where(
-                    and(
-                        eq(tasks.workspaceId, workspaceId),
-                        lt(tasks.dueDate, now),
-                        ne(tasks.status, "completed"),
+                db
+                    .select({ value: count() })
+                    .from(tasks)
+                    .where(
+                        and(
+                            scope,
+                            eq(tasks.workspaceId, workspaceId),
+                            lt(tasks.dueDate, now),
+                            ne(tasks.status, "completed"),
+                        ),
                     ),
-                ),
-            db
-                .select({value: count()})
-                .from(tasks)
-                .where(
-                    and(
-                        eq(tasks.workspaceId, workspaceId),
-                        eq(tasks.status, "completed"),
+                db
+                    .select({ value: count() })
+                    .from(tasks)
+                    .where(
+                        and(
+                            scope,
+                            eq(tasks.workspaceId, workspaceId),
+                            eq(tasks.status, "completed"),
+                        ),
                     ),
-                ),
-            db
-                .select({title: tasks.title})
-                .from(tasks)
-                .where(
-                    and(
-                        eq(tasks.workspaceId, workspaceId),
-                        ne(tasks.status, "completed"),
-                    ),
-                )
-                .orderBy(asc(tasks.dueDate))
-                .limit(1),
-        ]);
+                db
+                    .select({ title: tasks.title })
+                    .from(tasks)
+                    .where(
+                        and(
+                            scope,
+                            eq(tasks.workspaceId, workspaceId),
+                            ne(tasks.status, "completed"),
+                        ),
+                    )
+                    .orderBy(asc(tasks.dueDate))
+                    .limit(1),
+            ]);
 
         const [assistantMessage] = await db
             .insert(aiMessages)
@@ -133,9 +134,9 @@ export async function POST(request: Request, {params}: Params) {
 
         await db
             .update(aiConversations)
-            .set({updatedAt: new Date()})
+            .set({ updatedAt: new Date() })
             .where(eq(aiConversations.id, id));
 
-        return created({userMessage, assistantMessage});
+        return created({ userMessage, assistantMessage });
     });
 }

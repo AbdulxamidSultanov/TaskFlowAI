@@ -1,6 +1,8 @@
 "use client";
+import { SessionSettings } from "@/components/session-settings";
+import { ReminderSettings } from "@/components/reminder-settings";
 
-import {useLocale, useTranslations} from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     Bell,
     Building2,
@@ -16,32 +18,22 @@ import {
     Trash2,
     UserRound,
 } from "lucide-react";
-import {useSearchParams} from "next/navigation";
-import {
-    Suspense,
-    useEffect,
-    useMemo,
-    useState,
-} from "react";
+import { useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useMemo, useState } from "react";
 
-import {useTheme} from "@/components/theme-provider";
-import {Avatar} from "@/components/ui/avatar";
-import {Badge, roleTone} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
-import {
-    Checkbox,
-    Field,
-    Input,
-    Select,
-} from "@/components/ui/input";
-import {Card, CardHeader, PageHeader} from "@/components/ui/layout";
-import {ConfirmDialog} from "@/components/ui/modal";
-import {PageLoader} from "@/components/ui/states";
-import {Tabs} from "@/components/ui/tabs";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {usePathname, useRouter} from "@/i18n/navigation";
-import {routing} from "@/i18n/routing";
+import { useTheme } from "@/components/theme-provider";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge, roleTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Checkbox, Field, Input, Select } from "@/components/ui/input";
+import { Card, CardHeader, PageHeader } from "@/components/ui/layout";
+import { ConfirmDialog } from "@/components/ui/modal";
+import { PageLoader } from "@/components/ui/states";
+import { Tabs } from "@/components/ui/tabs";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { usePathname, useRouter } from "@/i18n/navigation";
+import { routing } from "@/i18n/routing";
 import {
     useCreateWorkspaceMutation,
     useDeleteWorkspaceMutation,
@@ -52,15 +44,10 @@ import {
     useUpdateUserMutation,
     useUpdateWorkspaceMutation,
 } from "@/lib/redux/api";
-import {useAppDispatch} from "@/lib/redux/hooks";
-import {setActiveWorkspace} from "@/lib/redux/workspace-slice";
-import type {ThemeValue, WorkspacePlan} from "@/lib/domain";
-import {
-    cn,
-    fileSize,
-    formatDate,
-    getApiErrorMessage,
-} from "@/lib/utils";
+import { useAppDispatch } from "@/lib/redux/hooks";
+import { setActiveWorkspace } from "@/lib/redux/workspace-slice";
+import type { ThemeValue, WorkspacePlan } from "@/lib/domain";
+import { cn, fileSize, formatDate, getApiErrorMessage } from "@/lib/utils";
 
 type TabValue =
     | "profile"
@@ -74,7 +61,11 @@ const tabsConfig: Array<{
     labelKey: string;
     icon: React.ReactNode;
 }> = [
-    {value: "profile", labelKey: "userProfile", icon: <UserRound size={14} />},
+    {
+        value: "profile",
+        labelKey: "userProfile",
+        icon: <UserRound size={14} />,
+    },
     {
         value: "preferences",
         labelKey: "themeAppearance",
@@ -120,7 +111,7 @@ function SettingsContent() {
     const pathname = usePathname();
     const dispatch = useAppDispatch();
     const toast = useToast();
-    const {theme, setTheme} = useTheme();
+    const { theme, setTheme } = useTheme();
     const searchParams = useSearchParams();
 
     const {
@@ -141,10 +132,10 @@ function SettingsContent() {
     );
     const [mounted, setMounted] = useState(false);
 
-    const {data: settingsData} = useGetSettingsQuery();
+    const { data: settingsData } = useGetSettingsQuery();
     const settings = settingsData ?? contextSettings;
 
-    const {data: departments} = useGetDepartmentsQuery(undefined, {
+    const { data: departments } = useGetDepartmentsQuery(undefined, {
         skip: !isGlobalAdmin,
     });
 
@@ -172,9 +163,7 @@ function SettingsContent() {
     const [email, setEmail] = useState(user.email);
     const [jobTitle, setJobTitle] = useState(user.jobTitle ?? "");
     const [timezone, setTimezone] = useState(user.timezone);
-    const [departmentId, setDepartmentId] = useState(
-        user.departmentId ?? "",
-    );
+    const [departmentId, setDepartmentId] = useState(user.departmentId ?? "");
     const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl ?? "");
 
     useEffect(() => {
@@ -271,9 +260,9 @@ function SettingsContent() {
 
     const planOptions = useMemo(
         () => [
-            {value: "free" as const, label: t("planFree")},
-            {value: "pro" as const, label: t("planPro")},
-            {value: "business" as const, label: t("planBusiness")},
+            { value: "free" as const, label: t("planFree") },
+            { value: "pro" as const, label: t("planPro") },
+            { value: "business" as const, label: t("planBusiness") },
         ],
         [t],
     );
@@ -289,7 +278,7 @@ function SettingsContent() {
                     timezone,
                     avatarUrl: avatarUrl.trim() || null,
                     ...(isGlobalAdmin
-                        ? {departmentId: departmentId || null}
+                        ? { departmentId: departmentId || null }
                         : {}),
                 },
             }).unwrap();
@@ -309,7 +298,7 @@ function SettingsContent() {
             return;
         }
         try {
-            await updateUser({id: user.id, data: {password}}).unwrap();
+            await updateUser({ id: user.id, data: { password } }).unwrap();
             setPassword("");
             setConfirmPassword("");
             toast.success(t("passwordSaved"));
@@ -321,7 +310,7 @@ function SettingsContent() {
     const selectTheme = async (value: ThemeValue) => {
         setTheme(value);
         try {
-            await updateSettings({theme: value}).unwrap();
+            await updateSettings({ theme: value }).unwrap();
             toast.success(t("preferencesSaved"));
         } catch (error) {
             toast.error(getApiErrorMessage(error, t("preferencesError")));
@@ -346,7 +335,7 @@ function SettingsContent() {
     const selectModel = async (value: string) => {
         setAiModel(value);
         try {
-            await updateSettings({aiModel: value}).unwrap();
+            await updateSettings({ aiModel: value }).unwrap();
             toast.success(t("preferencesSaved"));
         } catch (error) {
             toast.error(getApiErrorMessage(error, t("preferencesError")));
@@ -357,11 +346,11 @@ function SettingsContent() {
         key: "dailySummaryEmail" | "overduePush" | "teamMentions",
         value: boolean,
     ) => {
-        setPrefs((current) => ({...current, [key]: value}));
+        setPrefs((current) => ({ ...current, [key]: value }));
         try {
-            await updateSettings({[key]: value}).unwrap();
+            await updateSettings({ [key]: value }).unwrap();
         } catch (error) {
-            setPrefs((current) => ({...current, [key]: !value}));
+            setPrefs((current) => ({ ...current, [key]: !value }));
             toast.error(getApiErrorMessage(error, t("preferencesError")));
         }
     };
@@ -404,15 +393,13 @@ function SettingsContent() {
             setNewWorkspacePlan("free");
             toast.success(t("workspaceCreated"));
         } catch (error) {
-            toast.error(
-                getApiErrorMessage(error, t("workspaceCreateError")),
-            );
+            toast.error(getApiErrorMessage(error, t("workspaceCreateError")));
         }
     };
 
     const removeWorkspace = async () => {
         try {
-            await deleteWorkspace({id: workspace.id}).unwrap();
+            await deleteWorkspace({ id: workspace.id }).unwrap();
             setConfirmDelete(false);
             toast.success(t("workspaceDeleted"));
         } catch (error) {
@@ -722,7 +709,9 @@ function SettingsContent() {
                                 <option value="taskflow-rules-v1">
                                     TaskFlow Rules v1
                                 </option>
-                                <option value="taskflow-pro">TaskFlow Pro</option>
+                                <option value="taskflow-pro">
+                                    TaskFlow Pro
+                                </option>
                                 <option value="taskflow-experimental">
                                     TaskFlow Experimental
                                 </option>
@@ -732,6 +721,8 @@ function SettingsContent() {
                 </div>
             ) : null}
 
+            <ReminderSettings />
+            {tab === "security" ? <SessionSettings /> : null}
             {tab === "notifications" ? (
                 <Card>
                     <CardHeader
@@ -832,7 +823,12 @@ function SettingsContent() {
                         <CardHeader
                             title={t("changePassword")}
                             description={t("changePasswordDescription")}
-                            action={<KeyRound size={16} className="text-text-muted" />}
+                            action={
+                                <KeyRound
+                                    size={16}
+                                    className="text-text-muted"
+                                />
+                            }
                         />
                         <div className="space-y-3">
                             <Field label={t("newPassword")}>
@@ -887,7 +883,9 @@ function SettingsContent() {
                                         <Button
                                             size="sm"
                                             onClick={() => void saveWorkspace()}
-                                            loading={updateWorkspaceState.isLoading}
+                                            loading={
+                                                updateWorkspaceState.isLoading
+                                            }
                                         >
                                             {tCommon("saveChanges")}
                                         </Button>
@@ -946,10 +944,7 @@ function SettingsContent() {
                                     />
                                 </Field>
                                 <Field label={t("workspaceSlugReadonly")}>
-                                    <Input
-                                        value={workspace.slug}
-                                        disabled
-                                    />
+                                    <Input value={workspace.slug} disabled />
                                 </Field>
                             </div>
                         </Card>
@@ -958,8 +953,15 @@ function SettingsContent() {
                             <Card>
                                 <CardHeader
                                     title={t("createWorkspace")}
-                                    description={t("createWorkspaceDescription")}
-                                    action={<Plus size={16} className="text-text-muted" />}
+                                    description={t(
+                                        "createWorkspaceDescription",
+                                    )}
+                                    action={
+                                        <Plus
+                                            size={16}
+                                            className="text-text-muted"
+                                        />
+                                    }
                                 />
                                 <div className="grid gap-3 sm:grid-cols-3">
                                     <Field label={t("workspaceName")}>

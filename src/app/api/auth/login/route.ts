@@ -1,15 +1,17 @@
-import {eq} from "drizzle-orm";
+import { limitAuthAttempt } from "@/lib/auth/rate-limit";
+import { eq } from "drizzle-orm";
 
-import {db} from "@/db";
-import {users} from "@/db/schema";
-import {ApiError, handleRoute, ok, parseBody} from "@/lib/api/http";
-import {loginSchema} from "@/lib/api/schemas";
-import {verifyPassword} from "@/lib/auth/password";
-import {createSession, getAuthUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { users } from "@/db/schema";
+import { ApiError, handleRoute, ok, parseBody } from "@/lib/api/http";
+import { loginSchema } from "@/lib/api/schemas";
+import { verifyPassword } from "@/lib/auth/password";
+import { createSession, getAuthUser } from "@/lib/auth/session";
 
 export async function POST(request: Request) {
     return handleRoute(async () => {
         const input = await parseBody(request, loginSchema);
+        await limitAuthAttempt(input.email);
 
         const [user] = await db
             .select()
@@ -18,12 +20,20 @@ export async function POST(request: Request) {
             .limit(1);
 
         if (!user || !user.isActive) {
-            throw new ApiError(401, "Invalid email or password", "INVALID_CREDENTIALS");
+            throw new ApiError(
+                401,
+                "Invalid email or password",
+                "INVALID_CREDENTIALS",
+            );
         }
 
         const valid = await verifyPassword(input.password, user.passwordHash);
         if (!valid) {
-            throw new ApiError(401, "Invalid email or password", "INVALID_CREDENTIALS");
+            throw new ApiError(
+                401,
+                "Invalid email or password",
+                "INVALID_CREDENTIALS",
+            );
         }
 
         await createSession(user.id);

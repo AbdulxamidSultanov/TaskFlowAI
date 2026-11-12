@@ -1,7 +1,8 @@
-import {and, asc, eq, gte, inArray, lte} from "drizzle-orm";
+import { calendarScope, assertCalendarRelations } from "@/lib/auth/scope";
+import { and, asc, eq, gte, inArray, lte } from "drizzle-orm";
 
-import {db} from "@/db";
-import {calendarEvents, departments, projects, tasks} from "@/db/schema";
+import { db } from "@/db";
+import { calendarEvents, departments, projects, tasks } from "@/db/schema";
 import {
     ApiError,
     created,
@@ -14,8 +15,11 @@ import {
     calendarEventCreateSchema,
     calendarListQuerySchema,
 } from "@/lib/api/schemas";
-import {getAccessibleWorkspaceIds, requireWorkspaceMember} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import {
+    getAccessibleWorkspaceIds,
+    requireWorkspaceMember,
+} from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
     return handleRoute(async () => {
@@ -28,14 +32,16 @@ export async function GET(request: Request) {
             throw new ApiError(403, "Workspace access denied", "FORBIDDEN");
         }
 
-        const conditions = [];
+        const conditions = [await calendarScope(user, query.workspaceId)];
         if (query.workspaceId) {
             conditions.push(eq(calendarEvents.workspaceId, query.workspaceId));
         } else {
             conditions.push(inArray(calendarEvents.workspaceId, workspaceIds));
         }
         if (query.departmentId) {
-            conditions.push(eq(calendarEvents.departmentId, query.departmentId));
+            conditions.push(
+                eq(calendarEvents.departmentId, query.departmentId),
+            );
         }
         if (query.projectId) {
             conditions.push(eq(calendarEvents.projectId, query.projectId));
@@ -81,7 +87,10 @@ export async function GET(request: Request) {
                 },
             })
             .from(calendarEvents)
-            .leftJoin(departments, eq(departments.id, calendarEvents.departmentId))
+            .leftJoin(
+                departments,
+                eq(departments.id, calendarEvents.departmentId),
+            )
             .leftJoin(projects, eq(projects.id, calendarEvents.projectId))
             .leftJoin(tasks, eq(tasks.id, calendarEvents.taskId))
             .where(where)
@@ -96,6 +105,7 @@ export async function POST(request: Request) {
         const user = await requireUser();
         const input = await parseBody(request, calendarEventCreateSchema);
         await requireWorkspaceMember(user, input.workspaceId);
+        await assertCalendarRelations(user, input.workspaceId, input);
 
         const [event] = await db
             .insert(calendarEvents)

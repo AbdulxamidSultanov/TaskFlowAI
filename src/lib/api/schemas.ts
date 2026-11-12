@@ -1,4 +1,4 @@
-import {z} from "zod";
+import { z } from "zod";
 
 import {
     localeValues,
@@ -12,8 +12,20 @@ import {
     workspaceRoles,
 } from "@/lib/domain";
 
+const timezone = z
+    .string()
+    .max(80)
+    .refine((value) => {
+        try {
+            new Intl.DateTimeFormat("en", { timeZone: value });
+            return true;
+        } catch {
+            return false;
+        }
+    }, "Invalid IANA timezone");
+
 const email = z.string().email().toLowerCase();
-const isoDate = z.string().datetime({offset: true});
+const isoDate = z.string().datetime({ offset: true });
 const nullableIsoDate = isoDate.nullable().optional();
 const id = z.string().min(1);
 
@@ -30,15 +42,25 @@ export const loginSchema = z.object({
 });
 
 export const departmentCreateSchema = z.object({
+    workspaceId: id.optional(),
     name: z.string().trim().min(2).max(80),
-    slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9-]+$/),
+    slug: z
+        .string()
+        .trim()
+        .min(2)
+        .max(80)
+        .regex(/^[a-z0-9-]+$/),
     description: z.string().max(500).nullable().optional(),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .optional(),
 });
 
 export const departmentUpdateSchema = departmentCreateSchema.partial();
 
 export const userCreateSchema = z.object({
+    workspaceId: id.optional(),
     name: z.string().trim().min(2).max(120),
     email,
     password: z.string().min(8).max(72),
@@ -46,7 +68,7 @@ export const userCreateSchema = z.object({
     departmentId: id.nullable().optional(),
     jobTitle: z.string().max(120).nullable().optional(),
     avatarUrl: z.string().url().nullable().optional(),
-    timezone: z.string().max(80).optional(),
+    timezone: timezone.optional(),
 });
 
 export const userUpdateSchema = z.object({
@@ -57,13 +79,18 @@ export const userUpdateSchema = z.object({
     departmentId: id.nullable().optional(),
     jobTitle: z.string().max(120).nullable().optional(),
     avatarUrl: z.string().url().nullable().optional(),
-    timezone: z.string().max(80).optional(),
+    timezone: timezone.optional(),
     isActive: z.boolean().optional(),
 });
 
 export const workspaceCreateSchema = z.object({
     name: z.string().trim().min(2).max(100),
-    slug: z.string().trim().min(2).max(80).regex(/^[a-z0-9-]+$/),
+    slug: z
+        .string()
+        .trim()
+        .min(2)
+        .max(80)
+        .regex(/^[a-z0-9-]+$/),
     plan: z.enum(workspacePlans).optional(),
 });
 
@@ -87,9 +114,17 @@ export const projectCreateSchema = z.object({
     workspaceId: id,
     departmentId: id,
     name: z.string().trim().min(2).max(140),
-    key: z.string().trim().min(2).max(12).regex(/^[A-Z0-9-]+$/),
+    key: z
+        .string()
+        .trim()
+        .min(2)
+        .max(12)
+        .regex(/^[A-Z0-9-]+$/),
     description: z.string().max(2000).nullable().optional(),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .optional(),
     status: z.enum(projectStatuses).optional(),
     ownerId: id.optional(),
     startDate: nullableIsoDate,
@@ -97,7 +132,7 @@ export const projectCreateSchema = z.object({
 });
 
 export const projectUpdateSchema = projectCreateSchema
-    .omit({workspaceId: true})
+    .omit({ workspaceId: true })
     .partial();
 
 export const taskCreateSchema = z.object({
@@ -118,13 +153,18 @@ export const taskCreateSchema = z.object({
 });
 
 export const taskUpdateSchema = taskCreateSchema
-    .omit({workspaceId: true, projectId: true})
+    .omit({ workspaceId: true, projectId: true })
     .extend({
         projectId: id.optional(),
+        archived: z.boolean().optional(),
     })
     .partial();
 
 export const taskListQuerySchema = z.object({
+    archived: z
+        .enum(["true", "false"])
+        .transform((v) => v === "true")
+        .optional(),
     workspaceId: id.optional(),
     projectId: id.optional(),
     departmentId: id.optional(),
@@ -150,6 +190,7 @@ export const projectListQuerySchema = z.object({
 });
 
 export const userListQuerySchema = z.object({
+    workspaceId: id.optional(),
     departmentId: id.optional(),
     role: z.enum(userRoles).optional(),
     search: z.string().trim().max(120).optional(),
@@ -164,7 +205,10 @@ export const commentCreateSchema = z.object({
 export const tagCreateSchema = z.object({
     workspaceId: id,
     name: z.string().trim().min(1).max(40),
-    color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+    color: z
+        .string()
+        .regex(/^#[0-9a-fA-F]{6}$/)
+        .optional(),
 });
 
 export const calendarEventCreateSchema = z
@@ -257,9 +301,7 @@ export const aiTaskDraftUpdateSchema = z.object({
     estimateMinutes: z.number().int().min(0).max(10000).nullable().optional(),
 });
 
-export type AiTaskDraftUpdateInput = z.infer<
-    typeof aiTaskDraftUpdateSchema
->;
+export type AiTaskDraftUpdateInput = z.infer<typeof aiTaskDraftUpdateSchema>;
 
 export const aiTaskPublishSchema = z.object({
     workspaceId: id,
@@ -267,6 +309,13 @@ export const aiTaskPublishSchema = z.object({
 });
 
 export const settingsUpdateSchema = z.object({
+    taskReminders: z.boolean().optional(),
+    reminderHours: z
+        .string()
+        .regex(
+            /^(?:[1-9]|[1-9][0-9]|1[0-5][0-9]|16[0-8])(?:,(?:[1-9]|[1-9][0-9]|1[0-5][0-9]|16[0-8])){0,5}$/,
+        )
+        .optional(),
     theme: z.enum(themeValues).optional(),
     locale: z.enum(localeValues).optional(),
     dailySummaryEmail: z.boolean().optional(),

@@ -15,6 +15,34 @@
       "when": 1794402162593,
       "tag": "0001_solid_ezekiel",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1794490311854,
+      "tag": "0002_low_gunslinger",
+      "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "6",
+      "when": 1794490515154,
+      "tag": "0003_overconfident_titania",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "6",
+      "when": 1794491346250,
+      "tag": "0004_cool_luminals",
+      "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1794491346251,
+      "tag": "0005_integrity_guards",
+      "breakpoints": true
     }
   ]
 }

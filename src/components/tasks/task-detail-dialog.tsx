@@ -1,6 +1,8 @@
 "use client";
+import { Attachments } from "./attachments";
+import { TaskExtras } from "./task-extras";
 
-import {useLocale, useTranslations} from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     CalendarDays,
     Clock,
@@ -9,17 +11,17 @@ import {
     Send,
     Trash2,
 } from "lucide-react";
-import {useState} from "react";
+import { useState } from "react";
 
-import {Avatar} from "@/components/ui/avatar";
-import {Badge, priorityTone, statusTone} from "@/components/ui/badge";
-import {Button} from "@/components/ui/button";
-import {Select, Textarea} from "@/components/ui/input";
-import {Modal, ConfirmDialog} from "@/components/ui/modal";
-import {PageLoader} from "@/components/ui/states";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {taskStatuses} from "@/lib/domain";
+import { Avatar } from "@/components/ui/avatar";
+import { Badge, priorityTone, statusTone } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Select, Textarea } from "@/components/ui/input";
+import { Modal, ConfirmDialog } from "@/components/ui/modal";
+import { PageLoader } from "@/components/ui/states";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { taskStatuses } from "@/lib/domain";
 import {
     useAddTaskCommentMutation,
     useDeleteTaskMutation,
@@ -27,12 +29,8 @@ import {
     useGetWorkspaceMembersQuery,
     useUpdateTaskMutation,
 } from "@/lib/redux/api";
-import type {TaskDetail} from "@/lib/redux/types";
-import {
-    formatDate,
-    formatDateTime,
-    getApiErrorMessage,
-} from "@/lib/utils";
+import type { TaskDetail } from "@/lib/redux/types";
+import { formatDate, formatDateTime, getApiErrorMessage } from "@/lib/utils";
 
 export function TaskDetailDialog({
     taskId,
@@ -53,15 +51,15 @@ export function TaskDetailDialog({
     const tPriority = useTranslations("priority");
     const locale = useLocale();
     const toast = useToast();
-    const {workspace, canEdit} = useWorkspace();
+    const { workspace, canEdit } = useWorkspace();
 
-    const {data: task, isLoading} = useGetTaskQuery(
-        {id: taskId ?? ""},
-        {skip: !open || !taskId},
+    const { data: task, isLoading } = useGetTaskQuery(
+        { id: taskId ?? "" },
+        { skip: !open || !taskId },
     );
-    const {data: members} = useGetWorkspaceMembersQuery(
-        {workspaceId: workspace.id},
-        {skip: !open},
+    const { data: members } = useGetWorkspaceMembersQuery(
+        { workspaceId: workspace.id },
+        { skip: !open },
     );
     const [updateTask, updateState] = useUpdateTaskMutation();
     const [addComment, commentState] = useAddTaskCommentMutation();
@@ -70,10 +68,12 @@ export function TaskDetailDialog({
     const [comment, setComment] = useState("");
     const [confirmDelete, setConfirmDelete] = useState(false);
 
-    const quickUpdate = async (data: Parameters<typeof updateTask>[0]["data"]) => {
+    const quickUpdate = async (
+        data: Parameters<typeof updateTask>[0]["data"],
+    ) => {
         if (!task) return;
         try {
-            await updateTask({id: task.id, data}).unwrap();
+            await updateTask({ id: task.id, data }).unwrap();
             toast.success(t("updated"));
         } catch (error) {
             toast.error(getApiErrorMessage(error, t("updateError")));
@@ -85,7 +85,7 @@ export function TaskDetailDialog({
         try {
             await addComment({
                 taskId: task.id,
-                data: {body: comment.trim()},
+                data: { body: comment.trim() },
             }).unwrap();
             setComment("");
             toast.success(t("commentAdded"));
@@ -97,7 +97,7 @@ export function TaskDetailDialog({
     const remove = async () => {
         if (!task) return;
         try {
-            await deleteTask({id: task.id}).unwrap();
+            await deleteTask({ id: task.id }).unwrap();
             toast.success(t("deleted"));
             setConfirmDelete(false);
             onDeleted();
@@ -287,6 +287,11 @@ export function TaskDetailDialog({
                             </div>
                         ) : null}
 
+                        <TaskExtras
+                            taskId={task.id}
+                            archivedAt={task.archivedAt}
+                        />
+                        <Attachments taskId={task.id} />
                         <div>
                             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
                                 <MessageSquare size={16} />
@@ -346,8 +351,7 @@ export function TaskDetailDialog({
                                         onKeyDown={(event) => {
                                             if (
                                                 event.key === "Enter" &&
-                                                (event.metaKey ||
-                                                    event.ctrlKey)
+                                                (event.metaKey || event.ctrlKey)
                                             ) {
                                                 void submitComment();
                                             }

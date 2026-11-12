@@ -1,20 +1,18 @@
-import {and, count, desc, eq, isNull} from "drizzle-orm";
+import { visibleUserIds } from "@/lib/auth/scope";
+import { deliverReminders } from "@/lib/services/notifications";
+import { and, count, desc, eq, isNull } from "drizzle-orm";
 
-import {db} from "@/db";
-import {notifications} from "@/db/schema";
-import {
-    created,
-    handleRoute,
-    ok,
-    parseBody,
-} from "@/lib/api/http";
-import {getPagination, paginationMeta} from "@/lib/api/pagination";
-import {notificationCreateSchema} from "@/lib/api/schemas";
-import {requireRole, requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { notifications } from "@/db/schema";
+import { ApiError, created, handleRoute, ok, parseBody } from "@/lib/api/http";
+import { getPagination, paginationMeta } from "@/lib/api/pagination";
+import { notificationCreateSchema } from "@/lib/api/schemas";
+import { requireRole, requireUser } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
     return handleRoute(async () => {
         const user = await requireUser();
+        await deliverReminders(new Date(), user.id);
         const url = new URL(request.url);
         const pagination = getPagination(url);
         const unreadOnly = url.searchParams.get("unread") === "true";
@@ -34,12 +32,9 @@ export async function GET(request: Request) {
                 .orderBy(desc(notifications.createdAt))
                 .limit(pagination.limit)
                 .offset(pagination.offset),
+            db.select({ value: count() }).from(notifications).where(where),
             db
-                .select({value: count()})
-                .from(notifications)
-                .where(where),
-            db
-                .select({value: count()})
+                .select({ value: count() })
                 .from(notifications)
                 .where(
                     and(
@@ -62,6 +57,12 @@ export async function POST(request: Request) {
         const user = await requireUser();
         requireRole(user, ["admin", "manager"]);
         const input = await parseBody(request, notificationCreateSchema);
+        if (!(await visibleUserIds(user)).includes(input.userId))
+            throw new ApiError(
+                403,
+                "Recipient is outside your scope",
+                "FORBIDDEN",
+            );
 
         const [notification] = await db
             .insert(notifications)
