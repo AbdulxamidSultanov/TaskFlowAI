@@ -1,4 +1,4 @@
-import type {FetchBaseQueryError} from "@reduxjs/toolkit/query";
+import type { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 
 export function cn(
     ...values: Array<string | false | null | undefined>
@@ -144,9 +144,13 @@ export function getApiErrorMessage(error: unknown, fallback: string) {
     if (queryError && typeof queryError === "object" && "data" in queryError) {
         const data = queryError.data;
         if (data && typeof data === "object" && "error" in data) {
-            const apiError = (data as {error?: unknown}).error;
-            if (apiError && typeof apiError === "object" && "message" in apiError) {
-                return String((apiError as {message: unknown}).message);
+            const apiError = (data as { error?: unknown }).error;
+            if (
+                apiError &&
+                typeof apiError === "object" &&
+                "message" in apiError
+            ) {
+                return String((apiError as { message: unknown }).message);
             }
         }
     }
@@ -159,7 +163,7 @@ export function getApiErrorStatus(error: unknown) {
     if (!error || typeof error !== "object" || !("status" in error)) {
         return null;
     }
-    const status = (error as {status?: unknown}).status;
+    const status = (error as { status?: unknown }).status;
     return typeof status === "number" ? status : null;
 }
 
@@ -174,11 +178,9 @@ export function isToday(value: string | Date | null | undefined) {
     );
 }
 
-export function isOverdue(
-    dueDate: string | null | undefined,
-    status: string,
-) {
-    if (!dueDate || status === "completed") return false;
+export function isOverdue(dueDate: string | null | undefined, status: string) {
+    if (!dueDate || status === "completed" || status === "cancelled")
+        return false;
     return new Date(dueDate).getTime() < Date.now();
 }
 
@@ -187,7 +189,15 @@ export function startOfMonth(value: Date) {
 }
 
 export function endOfMonth(value: Date) {
-    return new Date(value.getFullYear(), value.getMonth() + 1, 0, 23, 59, 59, 999);
+    return new Date(
+        value.getFullYear(),
+        value.getMonth() + 1,
+        0,
+        23,
+        59,
+        59,
+        999,
+    );
 }
 
 export function addMonths(value: Date, amount: number) {
@@ -200,7 +210,7 @@ export function monthMatrix(value: Date) {
     const start = new Date(first);
     start.setDate(first.getDate() - startOffset);
 
-    return Array.from({length: 42}, (_, index) => {
+    return Array.from({ length: 42 }, (_, index) => {
         const day = new Date(start);
         day.setDate(start.getDate() + index);
         return day;

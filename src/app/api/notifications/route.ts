@@ -1,6 +1,9 @@
 import { visibleUserIds } from "@/lib/auth/scope";
-import { deliverReminders } from "@/lib/services/notifications";
-import { and, count, desc, eq, isNull } from "drizzle-orm";
+import {
+    deliverReminders,
+    notificationScope,
+} from "@/lib/services/notifications";
+import { and, count, desc, isNull } from "drizzle-orm";
 
 import { db } from "@/db";
 import { notifications } from "@/db/schema";
@@ -17,12 +20,11 @@ export async function GET(request: Request) {
         const pagination = getPagination(url);
         const unreadOnly = url.searchParams.get("unread") === "true";
 
-        const where = unreadOnly
-            ? and(
-                  eq(notifications.userId, user.id),
-                  isNull(notifications.readAt),
-              )
-            : eq(notifications.userId, user.id);
+        const visible = await notificationScope(user);
+        const where = and(
+            visible,
+            unreadOnly ? isNull(notifications.readAt) : undefined,
+        );
 
         const [items, totalRows, unreadRows] = await Promise.all([
             db
@@ -36,12 +38,7 @@ export async function GET(request: Request) {
             db
                 .select({ value: count() })
                 .from(notifications)
-                .where(
-                    and(
-                        eq(notifications.userId, user.id),
-                        isNull(notifications.readAt),
-                    ),
-                ),
+                .where(and(visible, isNull(notifications.readAt))),
         ]);
 
         return ok({
@@ -64,6 +61,15 @@ export async function POST(request: Request) {
                 "FORBIDDEN",
             );
 
+        if (input.entityType === "task" && input.entityId) {
+            const { actorFor } = await import("@/lib/services/task-workflow");
+            const { requireTaskAccess } = await import("@/lib/auth/scope");
+            await requireTaskAccess(user, input.entityId);
+            const target = await actorFor(input.userId);
+            if (!target)
+                throw new ApiError(403, "Recipient unavailable", "FORBIDDEN");
+            await requireTaskAccess(target, input.entityId);
+        }
         const [notification] = await db
             .insert(notifications)
             .values({

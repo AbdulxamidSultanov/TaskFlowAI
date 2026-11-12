@@ -1,3 +1,4 @@
+import { requireTaskPermission } from "@/lib/auth/task-rights";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
 import { taskActivity, taskDependencies, tasks, users } from "@/db/schema";
@@ -36,7 +37,11 @@ export async function addDependency(
     id: string,
     dependsOnId: string,
 ) {
-    const task = await requireTaskAccess(user, id, true);
+    const { task } = await requireTaskPermission(
+        user,
+        id,
+        "manageDependencies",
+    );
     if (task.status === "completed" || task.archivedAt)
         throw new ApiError(
             409,
@@ -89,7 +94,7 @@ export async function removeDependency(
     id: string,
     dependsOnId: string,
 ) {
-    await requireTaskAccess(user, id, true);
+    await requireTaskPermission(user, id, "manageDependencies");
     await db.transaction(async (tx) => {
         await tx
             .delete(taskDependencies)

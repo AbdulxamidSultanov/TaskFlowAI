@@ -1,25 +1,21 @@
-import {eq} from "drizzle-orm";
+import { notificationScope } from "@/lib/services/notifications";
+import { and, eq } from "drizzle-orm";
 
-import {db} from "@/db";
-import {notifications} from "@/db/schema";
-import {
-    ApiError,
-    handleRoute,
-    noContent,
-    ok,
-} from "@/lib/api/http";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { notifications } from "@/db/schema";
+import { ApiError, handleRoute, noContent, ok } from "@/lib/api/http";
+import { requireUser } from "@/lib/auth/session";
 
-type Params = {params: Promise<{id: string}>};
+type Params = { params: Promise<{ id: string }> };
 
-export async function PATCH(_request: Request, {params}: Params) {
+export async function PATCH(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const [notification] = await db
             .select()
             .from(notifications)
-            .where(eq(notifications.id, id))
+            .where(and(eq(notifications.id, id), await notificationScope(user)))
             .limit(1);
 
         if (!notification) {
@@ -32,22 +28,22 @@ export async function PATCH(_request: Request, {params}: Params) {
 
         const [updated] = await db
             .update(notifications)
-            .set({readAt: notification.readAt ?? new Date()})
-            .where(eq(notifications.id, id))
+            .set({ readAt: notification.readAt ?? new Date() })
+            .where(and(eq(notifications.id, id), await notificationScope(user)))
             .returning();
 
         return ok(updated);
     });
 }
 
-export async function DELETE(_request: Request, {params}: Params) {
+export async function DELETE(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const user = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const [notification] = await db
-            .select({userId: notifications.userId})
+            .select({ userId: notifications.userId })
             .from(notifications)
-            .where(eq(notifications.id, id))
+            .where(and(eq(notifications.id, id), await notificationScope(user)))
             .limit(1);
 
         if (!notification) {
@@ -58,7 +54,11 @@ export async function DELETE(_request: Request, {params}: Params) {
             throw new ApiError(403, "Insufficient permissions", "FORBIDDEN");
         }
 
-        await db.delete(notifications).where(eq(notifications.id, id));
+        await db
+            .delete(notifications)
+            .where(
+                and(eq(notifications.id, id), await notificationScope(user)),
+            );
         return noContent();
     });
 }

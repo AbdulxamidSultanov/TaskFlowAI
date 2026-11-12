@@ -1,9 +1,10 @@
+import { requireTaskPermission } from "@/lib/auth/task-rights";
 import { and, desc, eq, gt, inArray, isNull, lt, or } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import { taskActivity, tasks, timeEntries, users } from "@/db/schema";
 import { ApiError } from "@/lib/api/http";
-import { requireTaskAccess, taskScope, visibleUserIds } from "@/lib/auth/scope";
+import { taskScope, visibleUserIds } from "@/lib/auth/scope";
 import type { AuthUser } from "@/lib/auth/session";
 import {
     timeReasons,
@@ -40,8 +41,15 @@ function validateExplanation(input: {
 export async function createTimeEntry(user: AuthUser, raw: unknown) {
     const input = entryInput.parse(raw);
     validateExplanation(input);
-    const task = await requireTaskAccess(user, input.taskId, true);
-    if (task.archivedAt || (task.status === "completed" && !input.endAt))
+    const { task } = await requireTaskPermission(
+        user,
+        input.taskId,
+        "trackTime",
+    );
+    if (
+        task.archivedAt ||
+        (["completed", "cancelled"].includes(task.status) && !input.endAt)
+    )
         throw new ApiError(409, "Task is completed or archived", "TASK_CLOSED");
     const startAt = input.startAt ? new Date(input.startAt) : new Date();
     const endAt = input.endAt ? new Date(input.endAt) : null;

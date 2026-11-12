@@ -5,6 +5,7 @@ export const taskStatuses = [
     "under_review",
     "blocked",
     "completed",
+    "cancelled",
 ] as const;
 
 export type TaskStatus = (typeof taskStatuses)[number];
@@ -24,12 +25,7 @@ export type ProjectStatus = (typeof projectStatuses)[number];
 export const userRoles = ["admin", "manager", "member"] as const;
 export type UserRole = (typeof userRoles)[number];
 
-export const workspaceRoles = [
-    "owner",
-    "admin",
-    "member",
-    "viewer",
-] as const;
+export const workspaceRoles = ["owner", "admin", "member", "viewer"] as const;
 
 export type WorkspaceRole = (typeof workspaceRoles)[number];
 
@@ -67,6 +63,7 @@ export function statusLabel(status: TaskStatus) {
         under_review: "Under review",
         blocked: "Blocked",
         completed: "Completed",
+        cancelled: "Cancelled",
     };
     return labels[status];
 }

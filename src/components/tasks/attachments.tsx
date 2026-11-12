@@ -1,4 +1,5 @@
 "use client";
+import type { TaskPermissions } from "@/lib/auth/task-rights";
 import { useTranslations } from "next-intl";
 import { taskflowApi } from "@/lib/redux/api";
 import { useWorkspace } from "@/components/workspace/workspace-provider";
@@ -7,12 +8,22 @@ import { getApiErrorMessage } from "@/lib/utils";
 const api = taskflowApi.injectEndpoints({
     endpoints: (b) => ({
         attachments: b.query<
-            { id: string; name: string; size: number }[],
+            {
+                id: string;
+                name: string;
+                size: number;
+                uploadedById: string | null;
+            }[],
             string
         >({
             query: (id) => `/tasks/${encodeURIComponent(id)}/attachments`,
             transformResponse: (r: {
-                data: { id: string; name: string; size: number }[];
+                data: {
+                    id: string;
+                    name: string;
+                    size: number;
+                    uploadedById: string | null;
+                }[];
             }) => r.data,
             providesTags: ["Task"],
         }),
@@ -37,9 +48,16 @@ const api = taskflowApi.injectEndpoints({
         }),
     }),
 });
-export function Attachments({ taskId }: { taskId: string }) {
+export function Attachments({
+    taskId,
+    permissions,
+}: {
+    taskId: string;
+    permissions?: TaskPermissions;
+}) {
     const t = useTranslations("attachments");
-    const { canEdit } = useWorkspace();
+    const { user } = useWorkspace();
+    const canEdit = permissions?.upload ?? false;
     const toast = useToast();
     const { data } = api.useAttachmentsQuery(taskId);
     const [upload, state] = api.useUploadMutation();
@@ -60,7 +78,9 @@ export function Attachments({ taskId }: { taskId: string }) {
                         >
                             {file.name} · {Math.ceil(file.size / 1024)} KB
                         </a>
-                        {canEdit ? (
+                        {canEdit &&
+                        (permissions?.delete ||
+                            file.uploadedById === user.id) ? (
                             <button
                                 disabled={removeState.isLoading}
                                 className="text-xs text-error"

@@ -1,3 +1,4 @@
+import { requireTaskPermission } from "@/lib/auth/task-rights";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { taskAttachments } from "@/db/schema";
@@ -16,6 +17,7 @@ export async function GET(_request: Request, { params }: Context) {
                     id: taskAttachments.id,
                     name: taskAttachments.name,
                     size: taskAttachments.size,
+                    uploadedById: taskAttachments.uploadedById,
                     createdAt: taskAttachments.createdAt,
                 })
                 .from(taskAttachments)
@@ -27,7 +29,7 @@ export async function POST(request: Request, { params }: Context) {
     return handleRoute(async () => {
         const user = await requireUser();
         const id = (await params).id;
-        await requireTaskAccess(user, id, true);
+        await requireTaskPermission(user, id, "upload");
         if (Number(request.headers.get("content-length")) > 6 * 1024 * 1024)
             throw new ApiError(413, "File too large", "FILE_SIZE");
         const file = (await request.formData()).get("file");

@@ -452,7 +452,10 @@ function TasksPageContent() {
                                                 <button
                                                     key={task.id}
                                                     type="button"
-                                                    draggable={canEdit}
+                                                    draggable={
+                                                        canEdit &&
+                                                        task.permissions?.status
+                                                    }
                                                     onDragStart={(event) =>
                                                         event.dataTransfer.setData(
                                                             "text/taskflow-task",

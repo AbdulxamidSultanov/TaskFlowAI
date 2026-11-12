@@ -1,6 +1,10 @@
-import { and, eq, isNull, ne } from "drizzle-orm";
+import { taskScope, projectScope, departmentScope } from "@/lib/auth/scope";
+import type { AuthUser } from "@/lib/auth/session";
+import { and, eq, isNull, ne, or, inArray } from "drizzle-orm";
 import { db } from "@/db";
 import {
+    departments,
+    projects,
     notifications,
     reminderDeliveries,
     tasks,
@@ -12,7 +16,11 @@ import {
 
 type Store = Pick<typeof db, "select" | "insert" | "update" | "delete">;
 export async function notifyAssignment(store: Store, task: Task) {
-    if (!task.assigneeId || task.archivedAt || task.status === "completed")
+    if (
+        !task.assigneeId ||
+        task.archivedAt ||
+        ["completed", "cancelled"].includes(task.status)
+    )
         return;
     const [settings] = await store
         .select()
@@ -54,6 +62,7 @@ export async function deliverReminders(now = new Date(), userId?: string) {
         .where(
             and(
                 ne(tasks.status, "completed"),
+                ne(tasks.status, "cancelled"),
                 isNull(tasks.archivedAt),
                 eq(users.isActive, true),
                 userId ? eq(users.id, userId) : undefined,
@@ -64,7 +73,11 @@ export async function deliverReminders(now = new Date(), userId?: string) {
         if (!task.assigneeId || settings?.taskReminders === false) continue;
         const hours = [
             ...new Set(
-                (settings?.reminderHours ?? "24,5,1")
+                (
+                    settings?.reminderHours ??
+                    process.env.TASK_REMINDER_HOURS ??
+                    "24"
+                )
                     .split(",")
                     .map(Number)
                     .filter((n) => Number.isFinite(n) && n > 0 && n <= 168),
@@ -109,6 +122,20 @@ export async function deliverReminders(now = new Date(), userId?: string) {
                             uz: `Vazifa muddatiga ${duration} qoldi`,
                         }[locale];
             await db.transaction(async (tx) => {
+                const [current] = await tx
+                    .select()
+                    .from(tasks)
+                    .where(eq(tasks.id, task.id));
+                if (
+                    !current ||
+                    current.archivedAt ||
+                    ["completed", "cancelled"].includes(current.status) ||
+                    current.assigneeId !== task.assigneeId ||
+                    (kind === "due"
+                        ? current.dueDate?.getTime()
+                        : current.startDate?.getTime()) !== at.getTime()
+                )
+                    return;
                 const inserted = await tx
                     .insert(reminderDeliveries)
                     .values({ key, taskId: task.id, userId: task.assigneeId! })
@@ -128,5 +155,122 @@ export async function deliverReminders(now = new Date(), userId?: string) {
             });
         }
     }
-    return { delivered, checked: dueTasks.length };
+    const blocked = await deliverBlockNotifications(userId);
+    return { delivered: delivered + blocked, checked: dueTasks.length };
+}
+
+export async function notificationScope(user: AuthUser) {
+    return and(
+        eq(notifications.userId, user.id),
+        or(
+            isNull(notifications.entityId),
+            and(
+                eq(notifications.entityType, "task"),
+                inArray(
+                    notifications.entityId,
+                    db
+                        .select({ id: tasks.id })
+                        .from(tasks)
+                        .where(await taskScope(user, undefined, true)),
+                ),
+            ),
+            and(
+                eq(notifications.entityType, "project"),
+                inArray(
+                    notifications.entityId,
+                    db
+                        .select({ id: projects.id })
+                        .from(projects)
+                        .where(await projectScope(user)),
+                ),
+            ),
+            and(
+                eq(notifications.entityType, "department"),
+                inArray(
+                    notifications.entityId,
+                    db
+                        .select({ id: departments.id })
+                        .from(departments)
+                        .where(await departmentScope(user)),
+                ),
+            ),
+        ),
+    )!;
+}
+async function deliverBlockNotifications(userId?: string) {
+    const { actorFor, defaultSupervisor } = await import("./task-workflow");
+    const { requireTaskAccess } = await import("@/lib/auth/scope");
+    const { taskPermissions } = await import("@/lib/auth/task-rights");
+    const blocked = await db
+        .select()
+        .from(tasks)
+        .where(and(eq(tasks.status, "blocked"), isNull(tasks.archivedAt)));
+    let delivered = 0;
+    for (const task of blocked) {
+        const target =
+            task.helperId ??
+            (await defaultSupervisor(task.workspaceId, task.assigneeId));
+        if (!target || (userId && target !== userId)) continue;
+        const actor = await actorFor(target);
+        if (!actor) continue;
+        try {
+            await requireTaskAccess(actor, task.id);
+            if (!(await taskPermissions(actor, task)).unblock) continue;
+        } catch {
+            continue;
+        }
+        const [settings] = await db
+            .select()
+            .from(userSettings)
+            .where(eq(userSettings.userId, target));
+        const locale = settings?.locale ?? "ru";
+        const title = {
+            ru: "Нужна помощь: задача заблокирована",
+            en: "Help needed: task blocked",
+            uz: "Yordam kerak: vazifa bloklangan",
+        }[locale];
+        const action = {
+            ru: "Помогите устранить причину и снять блокировку.",
+            en: "Help resolve the issue and unblock the task.",
+            uz: "Muammoni hal qilib, vazifani blokdan chiqaring.",
+        }[locale];
+        const missing = {
+            ru: "Причина пока не указана",
+            en: "No reason recorded yet",
+            uz: "Sabab hali ko‘rsatilmagan",
+        }[locale];
+        const key = `block:${task.id}:${task.blockedAt?.getTime() ?? task.updatedAt.getTime()}:${target}`;
+        await db.transaction(async (tx) => {
+            const [current] = await tx
+                .select()
+                .from(tasks)
+                .where(eq(tasks.id, task.id));
+            if (
+                !current ||
+                current.archivedAt ||
+                current.status !== "blocked" ||
+                current.blockedAt?.getTime() !== task.blockedAt?.getTime() ||
+                current.helperId !== task.helperId ||
+                current.assigneeId !== task.assigneeId
+            )
+                return;
+            const inserted = await tx
+                .insert(reminderDeliveries)
+                .values({ key, taskId: task.id, userId: target })
+                .onConflictDoNothing()
+                .returning();
+            if (!inserted.length) return;
+            await tx.insert(notifications).values({
+                userId: target,
+                type: "system",
+                title,
+                body: `${task.title}: ${task.blockReason ?? missing}. ${action}`,
+                entityType: "task",
+                entityId: task.id,
+                dedupeKey: key,
+            });
+            delivered++;
+        });
+    }
+    return delivered;
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import type {ReactNode} from "react";
+import type { ReactNode } from "react";
 
-import {cn} from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import type {
     ProjectStatus,
     TaskPriority,
@@ -58,6 +58,7 @@ export const statusTone: Record<TaskStatus, BadgeTone> = {
     under_review: "warning",
     blocked: "danger",
     completed: "success",
+    cancelled: "neutral",
 };
 
 export const priorityTone: Record<TaskPriority, BadgeTone> = {
@@ -81,12 +82,12 @@ export const roleTone: Record<WorkspaceRole, BadgeTone> = {
     viewer: "neutral",
 };
 
-export function Dot({color}: {color: string}) {
+export function Dot({ color }: { color: string }) {
     return (
         <span
             aria-hidden
             className="inline-block size-2 shrink-0 rounded-full"
-            style={{backgroundColor: color}}
+            style={{ backgroundColor: color }}
         />
     );
 }

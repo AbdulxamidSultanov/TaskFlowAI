@@ -1,3 +1,5 @@
+import type { TaskPermissions } from "@/lib/auth/task-rights";
+import type { TaskActionRequest } from "@/lib/task-workflow-types";
 import type {
     LocaleValue,
     NotificationType,
@@ -260,6 +262,17 @@ export type Tag = {
 };
 
 export type Task = {
+    permissions?: TaskPermissions;
+    requiresReview?: boolean;
+    reviewerId?: string | null;
+    submittedAt?: string | null;
+    reviewedAt?: string | null;
+    reviewedById?: string | null;
+    blockReason?: string | null;
+    blockedAt?: string | null;
+    blockedById?: string | null;
+    helperId?: string | null;
+
     archivedAt: string | null;
     id: string;
     workspaceId: string;
@@ -299,6 +312,9 @@ export type TaskComment = {
 };
 
 export type TaskDetail = Task & {
+    actionRequests?: TaskActionRequest[];
+    helper?: { id: string; name: string } | null;
+    blockedBy?: { id: string; name: string } | null;
     project: ProjectRef;
     department: DepartmentRef;
     assignee: UserRef | null;
@@ -577,6 +593,8 @@ export type ProjectListArgs = PageArgs & {
 };
 
 export type TaskCreateInput = {
+    requiresReview?: boolean;
+    reviewerId?: string | null;
     workspaceId?: string;
     projectId: string;
     departmentId?: string;

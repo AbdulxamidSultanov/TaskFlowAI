@@ -1,3 +1,4 @@
+import { requireTaskPermission } from "@/lib/auth/task-rights";
 import { randomUUID } from "node:crypto";
 import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
 import { resolve } from "node:path";
@@ -17,7 +18,7 @@ export async function uploadAttachment(
     taskId: string,
     file: File,
 ) {
-    const task = await requireTaskAccess(user, taskId, true);
+    const { task } = await requireTaskPermission(user, taskId, "upload");
     if (file.size > 5 * 1024 * 1024 || file.size === 0)
         throw new ApiError(
             422,
@@ -97,7 +98,17 @@ export async function deleteAttachment(user: AuthUser, id: string) {
         .from(taskAttachments)
         .where(eq(taskAttachments.id, id));
     if (!row) throw new ApiError(404, "Attachment not found", "NOT_FOUND");
-    const task = await requireTaskAccess(user, row.taskId, true);
+    const { task, permissions } = await requireTaskPermission(
+        user,
+        row.taskId,
+        "upload",
+    );
+    if (row.uploadedById !== user.id && !permissions.delete)
+        throw new ApiError(
+            403,
+            "Only the author or task manager can delete this file",
+            "FORBIDDEN",
+        );
     await db.transaction(async (tx) => {
         const deleted = await tx
             .delete(taskAttachments)

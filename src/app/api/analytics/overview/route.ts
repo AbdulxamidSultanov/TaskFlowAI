@@ -1,4 +1,4 @@
-import { taskScope, departmentScope } from "@/lib/auth/scope";
+import { taskScope } from "@/lib/auth/scope";
 import {
     and,
     asc,
@@ -58,6 +58,7 @@ export async function GET(request: Request) {
         const [
             totalRows,
             completedRows,
+            cancelledRows,
             overdueRows,
             byStatus,
             byPriority,
@@ -77,16 +78,22 @@ export async function GET(request: Request) {
             db
                 .select({ value: count() })
                 .from(tasks)
+                .where(and(taskWhere, eq(tasks.status, "cancelled"))),
+            db
+                .select({ value: count() })
+                .from(tasks)
                 .where(
                     taskWhere
                         ? and(
                               taskWhere,
                               lt(tasks.dueDate, now),
                               ne(tasks.status, "completed"),
+                              ne(tasks.status, "cancelled"),
                           )
                         : and(
                               lt(tasks.dueDate, now),
                               ne(tasks.status, "completed"),
+                              ne(tasks.status, "cancelled"),
                           ),
                 ),
             db
@@ -117,7 +124,13 @@ export async function GET(request: Request) {
                 )
                 .where(
                     and(
-                        await departmentScope(user),
+                        inArray(
+                            departments.id,
+                            db
+                                .select({ id: tasks.departmentId })
+                                .from(tasks)
+                                .where(taskWhere),
+                        ),
                         query.departmentId
                             ? eq(departments.id, query.departmentId)
                             : undefined,
@@ -142,10 +155,12 @@ export async function GET(request: Request) {
                               taskWhere,
                               gte(tasks.dueDate, now),
                               ne(tasks.status, "completed"),
+                              ne(tasks.status, "cancelled"),
                           )
                         : and(
                               gte(tasks.dueDate, now),
                               ne(tasks.status, "completed"),
+                              ne(tasks.status, "cancelled"),
                           ),
                 )
                 .orderBy(asc(tasks.dueDate))
@@ -183,7 +198,7 @@ export async function GET(request: Request) {
             totals: {
                 tasks: total,
                 completed,
-                open: total - completed,
+                open: total - completed - (cancelledRows[0]?.value ?? 0),
                 overdue: overdueRows[0]?.value ?? 0,
                 completionRate:
                     total === 0

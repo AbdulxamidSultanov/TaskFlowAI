@@ -1,9 +1,10 @@
-import {and, eq, isNull} from "drizzle-orm";
+import { notificationScope } from "@/lib/services/notifications";
+import { and, isNull } from "drizzle-orm";
 
-import {db} from "@/db";
-import {notifications} from "@/db/schema";
-import {handleRoute, ok} from "@/lib/api/http";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { notifications } from "@/db/schema";
+import { handleRoute, ok } from "@/lib/api/http";
+import { requireUser } from "@/lib/auth/session";
 
 export async function POST() {
     return handleRoute(async () => {
@@ -12,14 +13,14 @@ export async function POST() {
 
         await db
             .update(notifications)
-            .set({readAt: now})
+            .set({ readAt: now })
             .where(
                 and(
-                    eq(notifications.userId, user.id),
+                    await notificationScope(user),
                     isNull(notifications.readAt),
                 ),
             );
 
-        return ok({readAt: now});
+        return ok({ readAt: now });
     });
 }

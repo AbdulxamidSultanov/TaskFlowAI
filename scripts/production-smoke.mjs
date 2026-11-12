@@ -163,6 +163,114 @@ try {
         { cookie: admin },
     );
     assert.equal(report.data.data.entries.length, 1);
+    const collaborator = await login(
+        "sardor.mirzaev@taskflow.ai",
+        "Password123!",
+    );
+    assert.equal(
+        (await request(`/api/tasks/${id}`, { cookie: collaborator })).status,
+        404,
+    );
+    const grant = await request(`/api/tasks/${id}/participants`, {
+        cookie: admin,
+        method: "POST",
+        body: { userId: "user-design-2", role: "viewer" },
+    });
+    assert.equal(grant.status, 200, JSON.stringify(grant.data));
+    assert.equal(
+        (await request(`/api/tasks/${id}`, { cookie: collaborator })).status,
+        200,
+    );
+    assert.equal(
+        (
+            await request("/api/projects/project-engineering-1", {
+                cookie: collaborator,
+            })
+        ).status,
+        404,
+    );
+    assert.equal(
+        (
+            await request(`/api/tasks/${id}`, {
+                cookie: collaborator,
+                method: "PATCH",
+                body: { dueDate: new Date().toISOString() },
+            })
+        ).status,
+        403,
+    );
+    assert.equal(
+        (
+            await request(`/api/tasks/${id}/participants`, {
+                cookie: collaborator,
+                method: "POST",
+                body: { userId: "user-design-2", role: "contributor" },
+            })
+        ).status,
+        403,
+    );
+    await request(`/api/tasks/${id}/participants`, {
+        cookie: admin,
+        method: "POST",
+        body: { userId: "user-design-2", role: "contributor" },
+    });
+    const message = await request("/api/notifications", {
+        cookie: admin,
+        method: "POST",
+        body: {
+            userId: "user-design-2",
+            entityType: "task",
+            entityId: id,
+            title: "Shared task action",
+        },
+    });
+    assert.equal(message.status, 201);
+    const form = new FormData();
+    form.set("file", new File(["Smoke attachment"], "task.txt"));
+    const upload = await fetch(base + `/api/tasks/${id}/attachments`, {
+        method: "POST",
+        headers: { cookie: collaborator, origin: base },
+        body: form,
+    });
+    assert.equal(upload.status, 201);
+    const fileId = (await upload.json()).data.id;
+    assert.equal(
+        (
+            await fetch(base + `/api/attachments/${fileId}`, {
+                headers: { cookie: collaborator },
+            })
+        ).status,
+        200,
+    );
+    const revoke = await request(
+        `/api/tasks/${id}/participants?userId=user-design-2`,
+        { cookie: admin, method: "DELETE" },
+    );
+    assert.equal(revoke.status, 200);
+    assert.equal(
+        (await request(`/api/tasks/${id}`, { cookie: collaborator })).status,
+        404,
+    );
+    assert.equal(
+        (
+            await fetch(base + `/api/attachments/${fileId}`, {
+                headers: { cookie: collaborator },
+            })
+        ).status,
+        404,
+    );
+    const inbox = await request("/api/notifications?pageSize=100", {
+        cookie: collaborator,
+    });
+    assert.ok(!inbox.data.data.items.some((n) => n.entityId === id));
+    assert.equal(
+        (
+            await request("/api/team-control?workspaceId=ws-taskflow-hq", {
+                cookie: collaborator,
+            })
+        ).status,
+        403,
+    );
     const settings = await request("/api/settings", {
         cookie: employee,
         method: "PATCH",

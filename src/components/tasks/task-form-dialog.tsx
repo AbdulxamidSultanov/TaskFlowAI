@@ -1,14 +1,14 @@
 "use client";
 
-import {useTranslations} from "next-intl";
-import {useEffect, useMemo, useState} from "react";
+import { useTranslations } from "next-intl";
+import { useEffect, useMemo, useState } from "react";
 
-import {Button} from "@/components/ui/button";
-import {Field, Input, Select, Textarea} from "@/components/ui/input";
-import {Modal} from "@/components/ui/modal";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {taskPriorities, taskStatuses} from "@/lib/domain";
+import { Button } from "@/components/ui/button";
+import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { taskPriorities, taskStatuses } from "@/lib/domain";
 import {
     useCreateTaskMutation,
     useGetProjectsQuery,
@@ -16,7 +16,11 @@ import {
     useGetWorkspaceMembersQuery,
     useUpdateTaskMutation,
 } from "@/lib/redux/api";
-import type {TaskCreateInput, TaskDetail, TaskListItem} from "@/lib/redux/types";
+import type {
+    TaskCreateInput,
+    TaskDetail,
+    TaskListItem,
+} from "@/lib/redux/types";
 import {
     dateInputToIso,
     getApiErrorMessage,
@@ -36,7 +40,9 @@ type EditableTask = Pick<
     | "dueDate"
     | "estimateMinutes"
 > & {
-    tags?: Array<{id: string; name: string; color: string}>;
+    requiresReview?: boolean;
+    permissions?: import("@/lib/auth/task-rights").TaskPermissions;
+    tags?: Array<{ id: string; name: string; color: string }>;
 };
 
 export function TaskFormDialog({
@@ -57,23 +63,24 @@ export function TaskFormDialog({
     onSaved?: (task: TaskDetail) => void;
 }) {
     const t = useTranslations("taskForm");
+    const w = useTranslations("workflows");
     const tCommon = useTranslations("common");
     const tStatus = useTranslations("status");
     const tPriority = useTranslations("priority");
     const toast = useToast();
-    const {workspace, canEdit} = useWorkspace();
+    const { workspace, canEdit } = useWorkspace();
 
-    const {data: projectsData} = useGetProjectsQuery(
-        {workspaceId: workspace.id, pageSize: 100},
-        {skip: !open},
+    const { data: projectsData } = useGetProjectsQuery(
+        { workspaceId: workspace.id, pageSize: 100 },
+        { skip: !open },
     );
-    const {data: members} = useGetWorkspaceMembersQuery(
-        {workspaceId: workspace.id},
-        {skip: !open},
+    const { data: members } = useGetWorkspaceMembersQuery(
+        { workspaceId: workspace.id },
+        { skip: !open },
     );
-    const {data: tags} = useGetTagsQuery(
-        {workspaceId: workspace.id},
-        {skip: !open},
+    const { data: tags } = useGetTagsQuery(
+        { workspaceId: workspace.id },
+        { skip: !open },
     );
 
     const [createTask, createState] = useCreateTaskMutation();
@@ -84,6 +91,7 @@ export function TaskFormDialog({
     const isEdit = Boolean(task?.id);
 
     const [title, setTitle] = useState("");
+    const [requiresReview, setRequiresReview] = useState(false);
     const [description, setDescription] = useState("");
     const [projectId, setProjectId] = useState("");
     const [status, setStatus] = useState<(typeof taskStatuses)[number]>(
@@ -101,6 +109,7 @@ export function TaskFormDialog({
     useEffect(() => {
         if (!open) return;
         setErrors({});
+        setRequiresReview(task?.requiresReview ?? false);
         if (task) {
             setTitle(task.title);
             setDescription(task.description ?? "");
@@ -118,7 +127,14 @@ export function TaskFormDialog({
             setTitle("");
             setDescription("");
             setProjectId(defaultProjectId ?? projects[0]?.id ?? "");
-            setStatus(defaultStatus ?? "todo");
+            setStatus(
+                defaultStatus &&
+                    !["blocked", "under_review", "cancelled"].includes(
+                        defaultStatus,
+                    )
+                    ? defaultStatus
+                    : "todo",
+            );
             setPriority("medium");
             setAssigneeId("");
             setStartDate("");
@@ -136,10 +152,7 @@ export function TaskFormDialog({
         }
     }, [open, projectId, projects, defaultProjectId]);
 
-    const selectedTags = useMemo(
-        () => new Set(tagIds),
-        [tagIds],
-    );
+    const selectedTags = useMemo(() => new Set(tagIds), [tagIds]);
 
     const submit = async () => {
         const nextErrors: Record<string, string> = {};
@@ -154,6 +167,7 @@ export function TaskFormDialog({
 
         const payload: TaskCreateInput = {
             projectId,
+            ...(!isEdit ? { requiresReview } : {}),
             title: title.trim(),
             description: description.trim() || null,
             status,
@@ -168,9 +182,20 @@ export function TaskFormDialog({
         try {
             let saved: TaskDetail;
             if (task?.id) {
+                const data: Partial<TaskCreateInput> = { ...payload };
+                if (!task.permissions?.assign) {
+                    delete data.assigneeId;
+                    delete data.projectId;
+                }
+                if (!task.permissions?.changeDeadline) {
+                    delete data.startDate;
+                    delete data.dueDate;
+                }
+                if (data.status === task.status) delete data.status;
+
                 saved = await updateTask({
                     id: task.id,
-                    data: payload,
+                    data,
                 }).unwrap();
                 toast.success(t("updated"));
             } else {
@@ -202,11 +227,23 @@ export function TaskFormDialog({
                         loading={saving}
                         disabled={!canEdit || projects.length === 0}
                     >
-                        {isEdit ? tCommon("saveChanges") : tCommon("createTask")}
+                        {isEdit
+                            ? tCommon("saveChanges")
+                            : tCommon("createTask")}
                     </Button>
                 </>
             }
         >
+            {!isEdit ? (
+                <label className="mb-4 flex items-center gap-2 text-sm">
+                    <input
+                        type="checkbox"
+                        checked={requiresReview}
+                        onChange={(e) => setRequiresReview(e.target.checked)}
+                    />
+                    {w("requiresReview")}
+                </label>
+            ) : null}
             {projects.length === 0 ? (
                 <div className="rounded-xl border border-dashed border-border p-6 text-center">
                     <p className="text-sm font-medium text-text-primary">
@@ -260,6 +297,7 @@ export function TaskFormDialog({
                         <Select
                             id="task-project"
                             value={projectId}
+                            disabled={isEdit && !task?.permissions?.assign}
                             onChange={(event) =>
                                 setProjectId(event.target.value)
                             }
@@ -276,6 +314,7 @@ export function TaskFormDialog({
                         <Select
                             id="task-assignee"
                             value={assigneeId}
+                            disabled={isEdit && !task?.permissions?.assign}
                             onChange={(event) =>
                                 setAssigneeId(event.target.value)
                             }
@@ -303,11 +342,25 @@ export function TaskFormDialog({
                                 )
                             }
                         >
-                            {taskStatuses.map((item) => (
-                                <option key={item} value={item}>
-                                    {tStatus(item)}
-                                </option>
-                            ))}
+                            {taskStatuses
+                                .filter(
+                                    (item) =>
+                                        (![
+                                            "blocked",
+                                            "under_review",
+                                            "cancelled",
+                                        ].includes(item) &&
+                                            !(
+                                                requiresReview &&
+                                                item === "completed"
+                                            )) ||
+                                        item === task?.status,
+                                )
+                                .map((item) => (
+                                    <option key={item} value={item}>
+                                        {tStatus(item)}
+                                    </option>
+                                ))}
                         </Select>
                     </Field>
 
@@ -335,6 +388,9 @@ export function TaskFormDialog({
                             id="task-start"
                             type="date"
                             value={startDate}
+                            disabled={
+                                isEdit && !task?.permissions?.changeDeadline
+                            }
                             onChange={(event) =>
                                 setStartDate(event.target.value)
                             }
@@ -346,9 +402,10 @@ export function TaskFormDialog({
                             id="task-due"
                             type="date"
                             value={dueDate}
-                            onChange={(event) =>
-                                setDueDate(event.target.value)
+                            disabled={
+                                isEdit && !task?.permissions?.changeDeadline
                             }
+                            onChange={(event) => setDueDate(event.target.value)}
                         />
                     </Field>
 

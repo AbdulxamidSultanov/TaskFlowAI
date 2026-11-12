@@ -101,7 +101,7 @@
     },
     "navigation": {
         "heading": "Navigation",
-        "dashboard": "Dashboard",
+        "dashboard": "My day",
         "tasks": "Tasks",
         "calendar": "Calendar",
         "aiAssistant": "AI Assistant",
@@ -114,7 +114,9 @@
         "newBadge": "New",
         "projects": "Projects",
         "team": "Team",
-        "timeManagement": "Time management"
+        "timeManagement": "Time management",
+        "overview": "Overview",
+        "teamControl": "Team control"
     },
     "status": {
         "todo": "Todo",
@@ -128,7 +130,8 @@
         "current": "Current",
         "upcoming": "Upcoming",
         "in_progress": "In progress",
-        "under_review": "Under review"
+        "under_review": "Under review",
+        "cancelled": "Cancelled"
     },
     "priority": {
         "low": "Low",
@@ -528,7 +531,9 @@
         "send": "Send",
         "status": "Status",
         "updateError": "Could not update the task",
-        "updated": "Task updated"
+        "updated": "Task updated",
+        "unavailable": "Task is unavailable, removed or could not be loaded.",
+        "retry": "Retry"
     },
     "projects": {
         "activeProjects": "Active projects",
@@ -923,7 +928,11 @@
         "workspace": "Entire workspace",
         "violationsUnavailable": "Violations are not measured: rules and data have not been defined.",
         "error": "Unable to update organization",
-        "retry": "Retry"
+        "retry": "Retry",
+        "search": "Find a person",
+        "collapse": "Collapse branch",
+        "expand": "Expand branch",
+        "tasks": "Accessible tasks for this person"
     },
     "reminders": {
         "title": "Task reminders",
@@ -973,5 +982,83 @@
         "all": "Sign out on all devices",
         "confirm": "End all sessions, including this one?",
         "error": "Unable to revoke session"
+    },
+    "dayBoard": {
+        "title": "My day",
+        "description": "Personal tasks and actions that need your attention.",
+        "teamTitle": "Team control",
+        "teamDescription": "Overdue, blocked and submitted work within your team.",
+        "uniqueTasks": "unique tasks",
+        "today": "Today",
+        "overdue": "Overdue",
+        "action": "Needs my action",
+        "blocked": "Blocked",
+        "review": "Awaiting review",
+        "empty": "No tasks in this group.",
+        "loading": "Loading tasks…",
+        "error": "Unable to load tasks.",
+        "forbidden": "You do not have access to this team control view.",
+        "retry": "Retry",
+        "employee": "Employee",
+        "all": "All",
+        "status": "Status",
+        "from": "Due from",
+        "to": "Due until",
+        "deadline": "Deadline",
+        "noDeadline": "Not set",
+        "unassigned": "Unassigned",
+        "blockReason": "Block reason",
+        "missingReason": "No reason recorded yet",
+        "reviewHint": "Check the result, then accept or return it with a comment.",
+        "next": "Next action",
+        "nextUnblock": "Help remove the block",
+        "nextReview": "Review the result",
+        "nextWork": "Work on the task and submit the result",
+        "nextOpen": "Open task and clarify the action",
+        "open": "Open task",
+        "actionKinds": {
+            "review": "Result review required",
+            "response": "Response requested",
+            "unblock": "Help with a block requested"
+        }
+    },
+    "workflows": {
+        "submit": "Submit for review",
+        "complete": "Complete",
+        "accept": "Accept result",
+        "rework": "Return for rework",
+        "block": "Report a block",
+        "unblock": "Unblock task",
+        "request": "Request action",
+        "respond": "Respond to request",
+        "resolve": "Respond to request",
+        "cancel": "Cancel task",
+        "reason": "Reason / comment (at least 3 characters)",
+        "helper": "Who can help",
+        "defaultSupervisor": "Assignee’s supervisor",
+        "chooseRecipient": "Select recipient",
+        "assignee": "Task assignee",
+        "helperHint": "Only people who already have task access are eligible. Add a contributor first for another department.",
+        "save": "Save",
+        "saved": "Action saved",
+        "error": "Unable to perform action",
+        "blockReason": "Block reason",
+        "missingReason": "No reason recorded yet",
+        "blockAuthor": "Blocked by",
+        "submitted": "Result submitted",
+        "accepted": "Result accepted",
+        "requiresReview": "Result requires review",
+        "reviewer": "Reviewer",
+        "participants": "Task participants",
+        "participantsHint": "Access applies only to this task, not to the rest of the project or department.",
+        "noParticipants": "No additional participants.",
+        "participant": "Employee",
+        "participantRole": "Participant permissions",
+        "chooseParticipant": "Select employee",
+        "viewer": "View only",
+        "contributor": "Contribute: comments, files and time",
+        "remove": "Remove access",
+        "add": "Add / update",
+        "retry": "Retry"
     }
 }
