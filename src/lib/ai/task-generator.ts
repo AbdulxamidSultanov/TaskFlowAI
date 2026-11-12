@@ -67,6 +67,10 @@ function config() {
             "",
         ),
         model: process.env.AI_MODEL?.trim() || DEFAULT_MODEL,
+        fallbackModels: (process.env.AI_FALLBACK_MODELS ?? "")
+            .split(",")
+            .map((item) => item.trim())
+            .filter(Boolean),
     };
 }
 
@@ -320,146 +324,205 @@ function mockGeneration(context: GeneratorContext): GenerationResult {
 export async function generateTaskDrafts(
     context: GeneratorContext,
 ): Promise<GenerationResult> {
-    const {apiKey, baseUrl, model} = config();
+    const {apiKey, baseUrl, model, fallbackModels} = config();
     if (!apiKey || process.env.AI_MOCK === "1") {
         return mockGeneration(context);
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    // High-demand models intermittently return 503. Try configured fallbacks
+    // and retry the primary model once before surfacing the provider error.
+    const attempts = [...new Set([model, ...fallbackModels, model])];
+    let lastError: AiGenerationError | null = null;
 
-    try {
-        const response = await fetch(`${baseUrl}/chat/completions`, {
-            method: "POST",
-            signal: controller.signal,
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                "Content-Type": "application/json",
-                "HTTP-Referer": process.env.APP_URL ?? "https://taskflowai.app",
-                "X-Title": "TaskFlowAI Task Generator",
-            },
-            body: JSON.stringify({
-                model,
-                temperature: 0.35,
-                max_tokens: 2500,
-                response_format: {
-                    type: "json_schema",
-                    json_schema: {
-                        name: "taskflow_task_drafts",
-                        strict: true,
-                        schema: responseJsonSchema,
-                    },
+    for (let index = 0; index < attempts.length; index += 1) {
+        const currentModel = attempts[index];
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+
+        try {
+            const response = await fetch(`${baseUrl}/chat/completions`, {
+                method: "POST",
+                signal: controller.signal,
+                headers: {
+                    Authorization: `Bearer ${apiKey}`,
+                    "Content-Type": "application/json",
+                    "HTTP-Referer":
+                        process.env.APP_URL ?? "https://taskflowai.app",
+                    "X-Title": "TaskFlowAI Task Generator",
                 },
-                messages: [
-                    {role: "system", content: systemPrompt},
-                    {
-                        role: "user",
-                        content: JSON.stringify({
-                            today: context.today,
-                            request: context.prompt,
-                            context: {
-                                projects: context.projects,
-                                departments: context.departments,
-                                members: context.members,
-                            },
-                        }),
+                body: JSON.stringify({
+                    model: currentModel,
+                    temperature: 0.35,
+                    max_tokens: 6000,
+                    response_format: {
+                        type: "json_schema",
+                        json_schema: {
+                            name: "taskflow_task_drafts",
+                            strict: true,
+                            schema: responseJsonSchema,
+                        },
                     },
-                ],
-            }),
-        });
+                    messages: [
+                        {role: "system", content: systemPrompt},
+                        {
+                            role: "user",
+                            content: JSON.stringify({
+                                today: context.today,
+                                request: context.prompt,
+                                context: {
+                                    projects: context.projects,
+                                    departments: context.departments,
+                                    members: context.members,
+                                },
+                            }),
+                        },
+                    ],
+                }),
+            });
 
-        if (!response.ok) {
-            const body = await response.text().catch(() => "");
-            if (response.status === 429) {
+            if (!response.ok) {
+                const body = await response.text().catch(() => "");
+                if (response.status === 429 || response.status === 503) {
+                    lastError = new AiGenerationError(
+                        response.status === 429
+                            ? "AI-провайдер ограничил частоту запросов. Попробуйте позже."
+                            : `Модель ${currentModel} перегружена. Попробуйте ещё раз.`,
+                        response.status === 429
+                            ? "AI_RATE_LIMIT"
+                            : "AI_UNAVAILABLE",
+                        response.status === 429 ? 429 : 502,
+                    );
+
+                    if (index < attempts.length - 1) {
+                        await new Promise((resolve) =>
+                            setTimeout(resolve, 450),
+                        );
+                        continue;
+                    }
+                    throw lastError;
+                }
+
                 throw new AiGenerationError(
-                    "AI-провайдер ограничил частоту запросов. Попробуйте позже.",
-                    "AI_RATE_LIMIT",
-                    429,
+                    `AI-провайдер вернул ошибку ${response.status}. ${body.slice(0, 300)}`,
+                    "AI_PROVIDER_ERROR",
+                    502,
                 );
             }
+
+            const payload = (await response.json()) as {
+                choices?: Array<{message?: {content?: unknown}}>;
+            };
+            const rawContent = payload.choices?.[0]?.message?.content;
+            const content =
+                typeof rawContent === "string"
+                    ? rawContent
+                    : Array.isArray(rawContent)
+                      ? rawContent
+                            .map((part) =>
+                                typeof part === "object" &&
+                                part &&
+                                "text" in part
+                                    ? String(part.text)
+                                    : "",
+                            )
+                            .join("")
+                      : "";
+
+            if (!content.trim()) {
+                throw new AiGenerationError(
+                    "AI вернул пустой ответ.",
+                    "AI_EMPTY_RESPONSE",
+                    502,
+                );
+            }
+
+            let parsed: unknown;
+            try {
+                parsed = JSON.parse(stripCodeFence(content));
+            } catch {
+                if (process.env.NODE_ENV !== "production") {
+                    console.warn(
+                        "AI returned invalid JSON:",
+                        content.slice(0, 700),
+                    );
+                }
+                throw new AiGenerationError(
+                    "AI вернул некорректный JSON.",
+                    "AI_INVALID_JSON",
+                    502,
+                );
+            }
+
+            const validated = aiResponseSchema.safeParse(parsed);
+            if (!validated.success) {
+                throw new AiGenerationError(
+                    "AI вернул задачи в неверном формате.",
+                    "AI_INVALID_RESPONSE",
+                    502,
+                );
+            }
+
+            const tasks = validated.data.tasks
+                .map((item) => normalizeSuggestion(item, context))
+                .filter((item): item is DraftSuggestion => Boolean(item))
+                .slice(0, MAX_GENERATED_TASKS);
+
+            if (tasks.length === 0) {
+                throw new AiGenerationError(
+                    "AI не смог сформировать допустимые задачи.",
+                    "AI_NO_VALID_TASKS",
+                    502,
+                );
+            }
+
+            return {
+                batchId: randomUUID(),
+                mode: "ai",
+                model: currentModel,
+                tasks,
+            };
+        } catch (error) {
+            if (error instanceof AiGenerationError) {
+                if (
+                    error.code === "AI_UNAVAILABLE" &&
+                    index < attempts.length - 1
+                ) {
+                    lastError = error;
+                    continue;
+                }
+                throw error;
+            }
+            if (error instanceof Error && error.name === "AbortError") {
+                throw new AiGenerationError(
+                    "AI-провайдер не ответил за 25 секунд.",
+                    "AI_TIMEOUT",
+                    504,
+                );
+            }
+            if (index < attempts.length - 1) {
+                lastError = new AiGenerationError(
+                    "Не удалось связаться с AI-провайдером.",
+                    "AI_NETWORK_ERROR",
+                    502,
+                );
+                continue;
+            }
             throw new AiGenerationError(
-                `AI-провайдер вернул ошибку ${response.status}. ${body.slice(0, 300)}`,
-                "AI_PROVIDER_ERROR",
+                "Не удалось связаться с AI-провайдером.",
+                "AI_NETWORK_ERROR",
                 502,
             );
+        } finally {
+            clearTimeout(timeout);
         }
-
-        const payload = (await response.json()) as {
-            choices?: Array<{message?: {content?: unknown}}>;
-        };
-        const rawContent = payload.choices?.[0]?.message?.content;
-        const content =
-            typeof rawContent === "string"
-                ? rawContent
-                : Array.isArray(rawContent)
-                  ? rawContent
-                        .map((part) =>
-                            typeof part === "object" &&
-                            part &&
-                            "text" in part
-                                ? String(part.text)
-                                : "",
-                        )
-                        .join("")
-                  : "";
-
-        if (!content.trim()) {
-            throw new AiGenerationError(
-                "AI вернул пустой ответ.",
-                "AI_EMPTY_RESPONSE",
-                502,
-            );
-        }
-
-        let parsed: unknown;
-        try {
-            parsed = JSON.parse(stripCodeFence(content));
-        } catch {
-            throw new AiGenerationError(
-                "AI вернул некорректный JSON.",
-                "AI_INVALID_JSON",
-                502,
-            );
-        }
-
-        const validated = aiResponseSchema.safeParse(parsed);
-        if (!validated.success) {
-            throw new AiGenerationError(
-                "AI вернул задачи в неверном формате.",
-                "AI_INVALID_RESPONSE",
-                502,
-            );
-        }
-
-        const tasks = validated.data.tasks
-            .map((item) => normalizeSuggestion(item, context))
-            .filter((item): item is DraftSuggestion => Boolean(item))
-            .slice(0, MAX_GENERATED_TASKS);
-
-        if (tasks.length === 0) {
-            throw new AiGenerationError(
-                "AI не смог сформировать допустимые задачи.",
-                "AI_NO_VALID_TASKS",
-                502,
-            );
-        }
-
-        return {batchId: randomUUID(), mode: "ai", model, tasks};
-    } catch (error) {
-        if (error instanceof AiGenerationError) throw error;
-        if (error instanceof Error && error.name === "AbortError") {
-            throw new AiGenerationError(
-                "AI-провайдер не ответил за 25 секунд.",
-                "AI_TIMEOUT",
-                504,
-            );
-        }
-        throw new AiGenerationError(
-            "Не удалось связаться с AI-провайдером.",
-            "AI_NETWORK_ERROR",
-            502,
-        );
-    } finally {
-        clearTimeout(timeout);
     }
+
+    throw (
+        lastError ??
+        new AiGenerationError(
+            "AI-провайдер недоступен.",
+            "AI_PROVIDER_ERROR",
+            502,
+        )
+    );
 }
