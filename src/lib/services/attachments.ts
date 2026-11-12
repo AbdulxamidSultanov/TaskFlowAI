@@ -1,83 +1,61 @@
 import { requireTaskPermission } from "@/lib/auth/task-rights";
 import { randomUUID } from "node:crypto";
-import { mkdir, writeFile, readFile, unlink } from "node:fs/promises";
-import { resolve } from "node:path";
 import { eq, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { taskAttachments, taskActivity, workspaces } from "@/db/schema";
 import { requireTaskAccess } from "@/lib/auth/scope";
 import type { AuthUser } from "@/lib/auth/session";
 import { ApiError } from "@/lib/api/http";
-const root = () =>
-    resolve(
-        /* turbopackIgnore: true */ process.env.FILE_STORAGE_PATH ??
-            ".data/uploads",
-    );
+import { storeAttachment, readAttachment, removeStoredAttachment } from "./attachment-storage";
+
+export async function recordAttachment(
+    user: AuthUser,
+    taskId: string,
+    file: { id: string; name: string; size: number; storageKey: string },
+) {
+    const { task } = await requireTaskPermission(user, taskId, "upload");
+    return db.transaction(async (tx) => {
+        const [existing] = await tx.select().from(taskAttachments).where(eq(taskAttachments.id, file.id));
+        if (existing) {
+            if (existing.taskId !== taskId || existing.uploadedById !== user.id || existing.storageKey !== file.storageKey)
+                throw new ApiError(409, "Upload already registered", "CONFLICT");
+            return { id: existing.id, name: existing.name, size: existing.size };
+        }
+        const [workspace] = await tx.select().from(workspaces).where(eq(workspaces.id, task.workspaceId));
+        if (workspace.storageUsedBytes + file.size > workspace.storageLimitBytes)
+            throw new ApiError(409, "Workspace storage limit reached", "STORAGE_LIMIT");
+        const [attachment] = await tx.insert(taskAttachments).values({
+            ...file, taskId, uploadedById: user.id,
+        }).returning();
+        await tx.update(workspaces).set({
+            storageUsedBytes: sql`${workspaces.storageUsedBytes}+${file.size}`,
+        }).where(eq(workspaces.id, task.workspaceId));
+        await tx.insert(taskActivity).values({
+            taskId, actorId: user.id, action: "attachment.added",
+            changes: JSON.stringify({ name: file.name, size: file.size }),
+        });
+        return { id: attachment.id, name: attachment.name, size: attachment.size };
+    });
+}
 export async function uploadAttachment(
     user: AuthUser,
     taskId: string,
     file: File,
 ) {
-    const { task } = await requireTaskPermission(user, taskId, "upload");
+    await requireTaskPermission(user, taskId, "upload");
     if (file.size > 5 * 1024 * 1024 || file.size === 0)
-        throw new ApiError(
-            422,
-            "Files must be between 1 byte and 5 MB",
-            "FILE_SIZE",
-        );
-    const storageKey = randomUUID();
-    await mkdir(root(), { recursive: true });
-    const name =
-        file.name.replace(/[\x00-\x1f/\\]/g, "_").slice(0, 200) || "attachment";
-    await writeFile(
-        resolve(root(), storageKey),
-        Buffer.from(await file.arrayBuffer()),
-        { flag: "wx" },
-    );
+        throw new ApiError(422, "Files must be between 1 byte and 5 MB", "FILE_SIZE");
+    const id = randomUUID();
+    const storageKey = await storeAttachment(id, file);
+    const name = file.name.replace(/[\x00-\x1f/\\]/g, "_").slice(0, 200) || "attachment";
     try {
-        return await db.transaction(async (tx) => {
-            const [workspace] = await tx
-                .select()
-                .from(workspaces)
-                .where(eq(workspaces.id, task.workspaceId));
-            if (
-                workspace.storageUsedBytes + file.size >
-                workspace.storageLimitBytes
-            )
-                throw new ApiError(
-                    409,
-                    "Workspace storage limit reached",
-                    "STORAGE_LIMIT",
-                );
-            const [attachment] = await tx
-                .insert(taskAttachments)
-                .values({
-                    taskId,
-                    uploadedById: user.id,
-                    name,
-                    storageKey,
-                    size: file.size,
-                })
-                .returning();
-            await tx
-                .update(workspaces)
-                .set({
-                    storageUsedBytes: sql`${workspaces.storageUsedBytes}+${file.size}`,
-                })
-                .where(eq(workspaces.id, task.workspaceId));
-            await tx.insert(taskActivity).values({
-                taskId,
-                actorId: user.id,
-                action: "attachment.added",
-                changes: JSON.stringify({ name, size: file.size }),
-            });
-            return { id: attachment.id, name, size: file.size };
-        });
+        return await recordAttachment(user, taskId, { id, name, size: file.size, storageKey });
     } catch (error) {
-        await unlink(resolve(root(), storageKey)).catch(() => {});
+        await removeStoredAttachment(storageKey).catch(() => {});
         throw error;
     }
 }
+
 export async function downloadAttachment(user: AuthUser, id: string) {
     const [row] = await db
         .select()
@@ -87,9 +65,7 @@ export async function downloadAttachment(user: AuthUser, id: string) {
     await requireTaskAccess(user, row.taskId);
     return {
         row,
-        data: await readFile(
-            /* turbopackIgnore: true */ resolve(root(), row.storageKey),
-        ),
+        data: await readAttachment(row.storageKey),
     };
 }
 export async function deleteAttachment(user: AuthUser, id: string) {
@@ -128,5 +104,5 @@ export async function deleteAttachment(user: AuthUser, id: string) {
             changes: JSON.stringify({ name: row.name }),
         });
     });
-    await unlink(resolve(root(), row.storageKey)).catch(() => {});
+    await removeStoredAttachment(row.storageKey);
 }

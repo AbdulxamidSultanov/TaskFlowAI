@@ -1,0 +1,11 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "regions": ["dub1"],
+  "schedules": {
+    "task-reminders": {
+      "schedule": "*/15 * * * *",
+      "path": "/api/cron/reminders",
+      "requestMethod": "GET"
+    }
+  }
+}

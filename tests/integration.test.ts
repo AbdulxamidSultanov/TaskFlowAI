@@ -30,7 +30,7 @@ before(async () => {
     client.close();
     execFileSync(
         process.execPath,
-        ["node_modules/tsx/dist/cli.mjs", "src/db/seed.ts"],
+        ["--import", "tsx", "src/db/seed.ts"],
         { env: process.env, stdio: "pipe" },
     );
     database = await import("../src/db");
@@ -451,6 +451,20 @@ test("attachments respect scope, bytes, quota and deletion", async () => {
     await assert.rejects(downloadAttachment(employee, file.id), {
         code: "NOT_FOUND",
     });
+});
+test("upload finalization is idempotent and preserves quota and activity", async () => {
+    process.env.FILE_STORAGE_PATH = join(dir, "uploads");
+    const { uploadAttachment, recordAttachment, deleteAttachment } = await import("../src/lib/services/attachments");
+    const task = await taskService.createTask(manager, { projectId, title: "Upload replay", assigneeId: employee.id });
+    const uploaded = await uploadAttachment(employee, task!.id, new File(["replay"], "replay.txt"));
+    const [row] = await database.db.select().from(schema.taskAttachments).where(eq(schema.taskAttachments.id, uploaded.id));
+    const before = await database.client.execute("select storage_used_bytes n from workspaces where id='ws-taskflow-hq'");
+    await recordAttachment(employee, task!.id, row);
+    await recordAttachment(employee, task!.id, row);
+    assert.equal((await database.client.execute("select storage_used_bytes n from workspaces where id='ws-taskflow-hq'")).rows[0].n, before.rows[0].n);
+    assert.equal((await database.client.execute({sql: "select count(*) n from task_activity where task_id=? and action='attachment.added'", args: [task!.id]})).rows[0].n, 1);
+    await assert.rejects(recordAttachment(other, task!.id, row), { code: "NOT_FOUND" });
+    await deleteAttachment(employee, uploaded.id);
 });
 test("reminders can be disabled and do not leak to other users", async () => {
     const task = await taskService.createTask(manager, {
