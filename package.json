@@ -17,13 +17,14 @@
     "db:reset": "node -e \"const fs=require('fs');for(const f of ['taskflow.db','taskflow.db-shm','taskflow.db-wal'])fs.rmSync('.data/'+f,{force:true})\" && npm run db:migrate && npm run db:seed",
     "db:backup": "tsx scripts/backup.ts",
     "notifications:worker": "tsx scripts/notification-worker.ts",
-    "test": "tsx --test tests/*.test.ts",
+    "test": "node --import tsx --test tests/*.test.ts",
     "test:production": "node scripts/production-smoke.mjs"
   },
   "dependencies": {
     "@libsql/client": "^0.18.0",
     "@mui/x-date-pickers": "^9.16.0",
     "@reduxjs/toolkit": "^2.13.0",
+    "@vercel/blob": "^2.9.0",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^13.0.3",
     "dayjs": "^1.11.23",

@@ -1,4 +1,5 @@
 "use client";
+import { upload as uploadBlob } from "@vercel/blob/client";
 import type { TaskPermissions } from "@/lib/auth/task-rights";
 import { useTranslations } from "next-intl";
 import { taskflowApi } from "@/lib/redux/api";
@@ -28,14 +29,35 @@ const api = taskflowApi.injectEndpoints({
             providesTags: ["Task"],
         }),
         upload: b.mutation<unknown, { id: string; file: File }>({
-            query: ({ id, file }) => {
-                const body = new FormData();
-                body.set("file", file);
-                return {
-                    url: `/tasks/${encodeURIComponent(id)}/attachments`,
-                    method: "POST",
-                    body,
+            async queryFn({ id, file }, _api, _options, baseQuery) {
+                const url = `/tasks/${encodeURIComponent(id)}/attachments`;
+                const prepared = await baseQuery({
+                    url: `${url}/upload`, method: "POST",
+                    body: { action: "prepare", name: file.name, size: file.size },
+                });
+                if (prepared.error) return { error: prepared.error };
+                const { data } = prepared.data as {
+                    data: { mode: "local" | "blob"; pathname?: string; token?: string };
                 };
+                if (data.mode === "local") {
+                    const body = new FormData();
+                    body.set("file", file);
+                    return baseQuery({ url, method: "POST", body });
+                }
+                try {
+                    await uploadBlob(data.pathname!, file, {
+                        access: "private",
+                        handleUploadUrl: `/api${url}/upload`,
+                        clientPayload: data.token,
+                        multipart: true,
+                    });
+                    return baseQuery({
+                        url: `${url}/upload`, method: "POST",
+                        body: { action: "complete", token: data.token },
+                    });
+                } catch (error) {
+                    return { error: { status: "CUSTOM_ERROR", error: error instanceof Error ? error.message : "Upload failed" } };
+                }
             },
             invalidatesTags: ["Task", "Workspace"],
         }),

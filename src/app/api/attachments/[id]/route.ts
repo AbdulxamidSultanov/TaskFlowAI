@@ -11,7 +11,7 @@ export async function GET(_request: Request, { params }: Context) {
             await requireUser(),
             (await params).id,
         );
-        return new Response(new Uint8Array(data), {
+        return new Response(data instanceof Uint8Array ? new Uint8Array(data) : data, {
             headers: {
                 "Content-Type": "application/octet-stream",
                 "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(row.name)}`,
