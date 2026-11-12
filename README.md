@@ -26,6 +26,8 @@ Open [http://localhost:3000](http://localhost:3000).
 Подробная инструкция по локальному запуску, настройке окружения и решению проблем:
 [`docs/local-setup.md`](docs/local-setup.md).
 
+**Warning:** `db:setup`/`db:seed` erase demo data. To update an existing database use `npm run db:migrate`, which creates a verified local SQLite backup.
+
 `db:setup` applies migrations from `drizzle/` and seeds demo data: 5 departments with
 5 users, projects, tasks, comments, calendar events and notifications per department.
 
@@ -44,6 +46,9 @@ npm run build
 npm run start
 npm run lint
 npm run typecheck
+npm test
+npm run db:backup
+npm run notifications:worker -- --once
 
 npm run db:generate   # generate migration from src/db/schema.ts
 npm run db:migrate    # apply migrations
@@ -122,3 +127,11 @@ docs/api-guide.md      # Redux / RTK Query / API usage guide
 docs/local-setup.md    # local setup and troubleshooting
 docs/ai-task-generator.md # AI generator setup and limitations
 ```
+
+## Time management and organizational access
+
+The **Time management** section provides a persistent timer, manual work entries, difficulty/reason notes, per-task time analysis and estimate overruns. The **Team** page contains the reporting tree, scoped access and email-bound invitation codes. Task cards include activity history, blocking dependencies, attachments and archive restoration.
+
+Task reminders apply to every assignee, with default thresholds of 24/5/1 hours, upcoming starts and overdue alerts. `npm run dev` and `npm run start` run the web app plus a separate one-minute reminder worker. Notifications are in-app; email/push providers are not configured. Production requires `AUTH_SECRET` (at least 32 characters). Long-lived production workers and shared durable file storage must be provisioned separately for serverless deployments.
+
+Behavior, permissions, endpoints and limitations: [docs/time-management.md](docs/time-management.md).

@@ -1,6 +1,8 @@
-import {count, eq} from "drizzle-orm";
+import { visibleUserIds, taskScope } from "@/lib/auth/scope";
+import { getAccessibleWorkspaceIds } from "@/lib/auth/guards";
+import { and, inArray, sql, count, eq } from "drizzle-orm";
 
-import {db} from "@/db";
+import { db } from "@/db";
 import {
     departments,
     tasks,
@@ -16,11 +18,11 @@ import {
     ok,
     parseBody,
 } from "@/lib/api/http";
-import {userUpdateSchema} from "@/lib/api/schemas";
-import {hashPassword} from "@/lib/auth/password";
-import {requireRole, requireUser} from "@/lib/auth/session";
+import { userUpdateSchema } from "@/lib/api/schemas";
+import { hashPassword } from "@/lib/auth/password";
+import { requireRole, requireUser } from "@/lib/auth/session";
 
-type Params = {params: Promise<{id: string}>};
+type Params = { params: Promise<{ id: string }> };
 
 const safeUserFields = {
     id: users.id,
@@ -53,12 +55,12 @@ async function findUser(id: string) {
     return user ?? null;
 }
 
-export async function GET(_request: Request, {params}: Params) {
+export async function GET(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const currentUser = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
 
-        if (currentUser.id !== id && !["admin", "manager"].includes(currentUser.role)) {
+        if (!(await visibleUserIds(currentUser)).includes(id)) {
             throw new ApiError(403, "Insufficient permissions", "FORBIDDEN");
         }
 
@@ -80,16 +82,31 @@ export async function GET(_request: Request, {params}: Params) {
                     },
                 })
                 .from(workspaceMembers)
-                .innerJoin(workspaces, eq(workspaces.id, workspaceMembers.workspaceId))
-                .where(eq(workspaceMembers.userId, id)),
+                .innerJoin(
+                    workspaces,
+                    eq(workspaces.id, workspaceMembers.workspaceId),
+                )
+                .where(
+                    and(
+                        eq(workspaceMembers.userId, id),
+                        inArray(
+                            workspaceMembers.workspaceId,
+                            await getAccessibleWorkspaceIds(currentUser),
+                        ),
+                    ),
+                ),
             db
-                .select({value: count()})
+                .select({ value: count() })
                 .from(tasks)
-                .where(eq(tasks.assigneeId, id)),
+                .where(
+                    and(eq(tasks.assigneeId, id), await taskScope(currentUser)),
+                ),
             db
-                .select({value: count()})
+                .select({ value: count() })
                 .from(tasks)
-                .where(eq(tasks.creatorId, id)),
+                .where(
+                    and(eq(tasks.creatorId, id), await taskScope(currentUser)),
+                ),
             db
                 .select()
                 .from(userSettings)
@@ -104,15 +121,15 @@ export async function GET(_request: Request, {params}: Params) {
                 createdTasks: created[0]?.value ?? 0,
             },
             memberships,
-            settings: settings[0] ?? null,
+            settings: currentUser.id === id ? (settings[0] ?? null) : null,
         });
     });
 }
 
-export async function PATCH(request: Request, {params}: Params) {
+export async function PATCH(request: Request, { params }: Params) {
     return handleRoute(async () => {
         const currentUser = await requireUser();
-        const {id} = await params;
+        const { id } = await params;
         const input = await parseBody(request, userUpdateSchema);
         const isSelf = currentUser.id === id;
         const isAdmin = currentUser.role === "admin";
@@ -154,41 +171,44 @@ export async function PATCH(request: Request, {params}: Params) {
         const [updated] = await db
             .update(users)
             .set({
-                ...(input.name === undefined ? {} : {name: input.name}),
-                ...(input.email === undefined ? {} : {email: input.email}),
+                ...(input.name === undefined ? {} : { name: input.name }),
+                ...(input.email === undefined ? {} : { email: input.email }),
                 ...(input.password === undefined
                     ? {}
-                    : {passwordHash: await hashPassword(input.password)}),
-                ...(input.role === undefined ? {} : {role: input.role}),
+                    : {
+                          passwordHash: await hashPassword(input.password),
+                          sessionVersion: sql`${users.sessionVersion}+1`,
+                      }),
+                ...(input.role === undefined ? {} : { role: input.role }),
                 ...(input.departmentId === undefined
                     ? {}
-                    : {departmentId: input.departmentId}),
+                    : { departmentId: input.departmentId }),
                 ...(input.jobTitle === undefined
                     ? {}
-                    : {jobTitle: input.jobTitle}),
+                    : { jobTitle: input.jobTitle }),
                 ...(input.avatarUrl === undefined
                     ? {}
-                    : {avatarUrl: input.avatarUrl}),
+                    : { avatarUrl: input.avatarUrl }),
                 ...(input.timezone === undefined
                     ? {}
-                    : {timezone: input.timezone}),
+                    : { timezone: input.timezone }),
                 ...(input.isActive === undefined
                     ? {}
-                    : {isActive: input.isActive}),
+                    : { isActive: input.isActive }),
                 updatedAt: new Date(),
             })
             .where(eq(users.id, id))
-            .returning({id: users.id});
+            .returning({ id: users.id });
 
         return ok(await findUser(updated.id));
     });
 }
 
-export async function DELETE(_request: Request, {params}: Params) {
+export async function DELETE(_request: Request, { params }: Params) {
     return handleRoute(async () => {
         const currentUser = await requireUser();
         requireRole(currentUser, ["admin"]);
-        const {id} = await params;
+        const { id } = await params;
 
         if (currentUser.id === id) {
             throw new ApiError(
@@ -199,7 +219,7 @@ export async function DELETE(_request: Request, {params}: Params) {
         }
 
         const [existing] = await db
-            .select({id: users.id})
+            .select({ id: users.id })
             .from(users)
             .where(eq(users.id, id))
             .limit(1);

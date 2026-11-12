@@ -1,14 +1,14 @@
-import {and, eq, inArray} from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 
-import {db} from "@/db";
-import {workspaceMembers, workspaces} from "@/db/schema";
-import {ApiError} from "@/lib/api/http";
-import type {AuthUser} from "@/lib/auth/session";
-import {requireRole} from "@/lib/auth/session";
+import { db } from "@/db";
+import { workspaceMembers, workspaces } from "@/db/schema";
+import { ApiError } from "@/lib/api/http";
+import type { AuthUser } from "@/lib/auth/session";
+import { requireRole } from "@/lib/auth/session";
 
 export async function getWorkspaceIdsForUser(userId: string) {
     const rows = await db
-        .select({workspaceId: workspaceMembers.workspaceId})
+        .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
         .where(eq(workspaceMembers.userId, userId));
 
@@ -51,7 +51,13 @@ export async function requireWorkspaceMember(
                 .limit(1);
 
             if (workspace) {
-                return {workspace, role: "admin" as const};
+                if (!allowedRoles.includes("admin"))
+                    throw new ApiError(
+                        403,
+                        "Insufficient permissions",
+                        "FORBIDDEN",
+                    );
+                return { workspace, role: "admin" as const };
             }
         }
 
@@ -83,7 +89,7 @@ export async function requireAnyWorkspaceAccess(user: AuthUser) {
 
 export async function getAccessibleWorkspaceIds(user: AuthUser) {
     if (user.role === "admin") {
-        const rows = await db.select({id: workspaces.id}).from(workspaces);
+        const rows = await db.select({ id: workspaces.id }).from(workspaces);
         return rows.map((row) => row.id);
     }
 
@@ -105,7 +111,7 @@ export async function assertWorkspaceIds(
     if (user.role === "admin") return;
 
     const allowed = await db
-        .select({workspaceId: workspaceMembers.workspaceId})
+        .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
         .where(
             and(
@@ -124,4 +130,25 @@ export async function assertWorkspaceIds(
 
 export function requireAdminOrManager(user: AuthUser) {
     requireRole(user, ["admin", "manager"]);
+}
+
+export async function requireWorkspaceSupervisor(
+    user: AuthUser,
+    workspaceId: string,
+) {
+    const membership = await requireWorkspaceMember(user, workspaceId);
+    if (membership.role === "owner" || membership.role === "admin")
+        return membership;
+    const [row] = await db
+        .select()
+        .from(workspaceMembers)
+        .where(
+            and(
+                eq(workspaceMembers.workspaceId, workspaceId),
+                eq(workspaceMembers.userId, user.id),
+            ),
+        );
+    if (row?.accessScope !== "team")
+        throw new ApiError(403, "Supervisor access required", "FORBIDDEN");
+    return membership;
 }

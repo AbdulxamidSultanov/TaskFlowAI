@@ -23,7 +23,7 @@ Experimental, isolated prototype on top of the existing AI Assistant page. It tu
 | `DELETE` | `/api/ai/task-generator/[id]` | Reject a draft |
 | `POST` | `/api/ai/task-generator/publish` | Publish 1–50 drafts idempotently |
 
-All endpoints require an authenticated workspace member. `owner`, `admin` and `member` can generate/edit/publish; `viewer` is read-only. Global admins are treated as workspace admins.
+All endpoints require an authenticated workspace member. `owner`, `admin` and `member` can generate; edits, rejection and publication are limited to the author or workspace owner/admin. `viewer` is read-only. All context is filtered by server-side scope. Global admins are treated as workspace admins.
 
 ## Environment
 
@@ -52,7 +52,7 @@ Mock mode is not a real model. It reads the requested count, matches a departmen
 
 - Prompt: 8–2000 characters.
 - Maximum 10 tasks per generation.
-- Maximum 30 draft rows per user per rolling minute.
+- Maximum 30 draft rows per user per rolling minute, checked again transactionally before inserting a batch.
 - 25-second provider timeout.
 - Strict JSON schema + Zod validation.
 - Only IDs supplied by the server are accepted; invalid assignees are nulled and invalid projects fall back to allowed projects.
@@ -83,7 +83,7 @@ Tests run against the Turso test data with the demo account and are cleaned up a
 
 - In-memory provider retries are not implemented; a failed generation must be retried by the user.
 - The rate limit is stored in the database per user, not per IP.
-- The generator does not yet schedule capacity checks or avoid duplicate titles across batches.
+- The generator receives estimated open-task workload and filters exact normalized titles already present in the visible task/draft scope. Semantic deduplication and full staffing/shift capacity are not implemented.
 - Drafts are only visible in the workspace; there is no notification when another admin publishes them.
 - Model output quality depends on the selected provider/model.
 - Real-model mode has not been exercised with a production key in this environment; the tested path is the clearly marked mock mode plus mocked provider responses.
@@ -92,9 +92,13 @@ Tests run against the Turso test data with the demo account and are cleaned up a
 
 The current permission boundary is workspace-level. The planned extension:
 
-1. Add `manager_id`/team relations and scoped role assignments.
+1. Reporting relations and `self`/`team`/`workspace` scopes are now stored per workspace membership.
 2. Build the allowed department/project/member context from the actor’s scope instead of the whole workspace.
 3. Add `scope` metadata to drafts (`departmentId`, `teamId`, `requestedBy`).
 4. Enforce scope again at publish time, not only in the prompt.
 5. Add approval rules for cross-department drafts and audit events.
 6. Let directors generate for allowed departments, managers for their department, supervisors for their team, and employees only for themselves.
+
+## Current implementation notes (2026-11-12)
+
+The organizational tree and server-side scopes are implemented. Publication records confirmedById/confirmedAt and generation mode/model. Project and department consistency is enforced; dates are strictly parsed in the actor timezone and provider deadlines outside today…+21 days are not accepted as suggestions. Human approval remains mandatory. Task history records AI publication. Historical test results above are not a claim that a live production model was tested in this environment. `npm test` supplies disposable-database regression tests for permissions and idempotent publication.

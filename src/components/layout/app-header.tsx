@@ -1,6 +1,6 @@
 "use client";
 
-import {useLocale, useTranslations} from "next-intl";
+import { useLocale, useTranslations } from "next-intl";
 import {
     Bell,
     Check,
@@ -19,33 +19,33 @@ import {
     UserRound,
     X,
 } from "lucide-react";
-import {useSearchParams} from "next/navigation";
-import {useEffect, useRef, useState, useTransition} from "react";
+import { useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState, useTransition } from "react";
 
-import {TaskFormDialog} from "@/components/tasks/task-form-dialog";
-import {useTheme} from "@/components/theme-provider";
-import {Avatar} from "@/components/ui/avatar";
-import {Button} from "@/components/ui/button";
-import {useToast} from "@/components/ui/toast";
-import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {Link, usePathname, useRouter} from "@/i18n/navigation";
-import {languageNames, routing} from "@/i18n/routing";
+import { TaskFormDialog } from "@/components/tasks/task-form-dialog";
+import { useTheme } from "@/components/theme-provider";
+import { Avatar } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { useToast } from "@/components/ui/toast";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
+import { Link, usePathname, useRouter } from "@/i18n/navigation";
+import { languageNames, routing } from "@/i18n/routing";
 import {
     useGetNotificationsQuery,
     useLogoutMutation,
     useMarkAllNotificationsReadMutation,
     useMarkNotificationReadMutation,
 } from "@/lib/redux/api";
-import {cn, formatRelative, getApiErrorMessage} from "@/lib/utils";
+import { cn, formatRelative, getApiErrorMessage } from "@/lib/utils";
 
-export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
+export function AppHeader({ onMenuClick }: { onMenuClick: () => void }) {
     const t = useTranslations("common");
     const locale = useLocale();
     const router = useRouter();
     const toast = useToast();
-    const {user} = useWorkspace();
+    const { user } = useWorkspace();
 
-    const {theme, setTheme} = useTheme();
+    const { theme, setTheme } = useTheme();
     const [mounted, setMounted] = useState(false);
     useEffect(() => setMounted(true), []);
 
@@ -58,14 +58,14 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
         const href = query ? `${pathname}?${query}` : pathname;
         setProfileOpen(false);
         startLocaleTransition(() => {
-            router.replace(href, {locale: nextLocale});
+            router.replace(href, { locale: nextLocale });
         });
     };
 
     const themeOptions = [
-        {value: "light", icon: Sun, label: t("light")},
-        {value: "dark", icon: Moon, label: t("dark")},
-        {value: "system", icon: Monitor, label: t("system")},
+        { value: "light", icon: Sun, label: t("light") },
+        { value: "dark", icon: Moon, label: t("dark") },
+        { value: "system", icon: Monitor, label: t("system") },
     ] as const;
 
     const [search, setSearch] = useState("");
@@ -77,7 +77,10 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
     const notificationsRef = useRef<HTMLDivElement>(null);
     const profileRef = useRef<HTMLDivElement>(null);
 
-    const {data: notifications} = useGetNotificationsQuery({pageSize: 6});
+    const { data: notifications } = useGetNotificationsQuery(
+        { pageSize: 6 },
+        { pollingInterval: 60000, refetchOnFocus: true },
+    );
     const [markRead] = useMarkNotificationReadMutation();
     const [markAll, markAllState] = useMarkAllNotificationsReadMutation();
     const [logout, logoutState] = useLogoutMutation();
@@ -91,10 +94,7 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
             ) {
                 setNotificationsOpen(false);
             }
-            if (
-                profileRef.current &&
-                !profileRef.current.contains(target)
-            ) {
+            if (profileRef.current && !profileRef.current.contains(target)) {
                 setProfileOpen(false);
             }
         };
@@ -129,7 +129,7 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
         entityId: string | null,
     ) => {
         if (!readAt) {
-            void markRead({id});
+            void markRead({ id });
         }
         setNotificationsOpen(false);
         if (entityType === "task" && entityId) {
@@ -218,7 +218,9 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
                                                 {t("notifications")}
                                             </p>
                                             <p className="text-[11px] text-text-muted">
-                                                {t("unreadCount", {count: unread})}
+                                                {t("unreadCount", {
+                                                    count: unread,
+                                                })}
                                             </p>
                                         </div>
                                         <button
@@ -435,14 +437,20 @@ export function AppHeader({onMenuClick}: {onMenuClick: () => void}) {
                                                         )}
                                                     >
                                                         <span>
-                                                            {languageNames[item]}
+                                                            {
+                                                                languageNames[
+                                                                    item
+                                                                ]
+                                                            }
                                                         </span>
                                                         <span className="flex items-center gap-1.5">
                                                             <span className="text-[10px] uppercase text-text-muted">
                                                                 {item}
                                                             </span>
                                                             {active ? (
-                                                                <Check size={14} />
+                                                                <Check
+                                                                    size={14}
+                                                                />
                                                             ) : (
                                                                 <span className="size-3.5" />
                                                             )}

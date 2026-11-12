@@ -50,12 +50,12 @@ taskflowai:redux-state
 
 Что сохраняется:
 
-- кэш RTK Query (пользователь, workspace, задачи, проекты, календарь и т.д.);
-- остальные Redux-слайсы, если вы добавите их в `makeStore`.
+- только UI-слайс `workspace` (выбранное рабочее пространство);
+- API-кэш не сохраняется: данные запрашиваются заново.
 
 Как это работает:
 
-1. `makeStore()` вызывает `loadPersistedState()` и передаёт сохранённое состояние в `preloadedState`.
+1. `makeStore()` создаёт store; после mount `hydrateStore()` восстанавливает только workspace-слайс через отдельный action.
 2. `startStatePersistence(store)` подписывается на изменения store.
 3. Изменения сохраняются с небольшой задержкой (180 мс), чтобы не писать в storage на каждый action.
 4. При `pagehide` состояние сохраняется сразу.
@@ -480,3 +480,5 @@ window.__TASKFLOW_API__.endpoints.health.initiate();
 - При выходе вызывайте `useLogoutMutation`, чтобы очистить кэш и snapshot.
 - `sessionStorage` очищается при закрытии вкладки, но не является защищённым хранилищем от XSS. Не кладите туда чувствительные данные.
 - Для production с отдельным доменом API настройте CORS и передавайте `credentials: "include"`.
+
+Новые маршруты времени, оргструктуры, приглашений, вложений и сессий описаны в [time-management.md](time-management.md). API-клиенты используют общий RTK Query store через injectEndpoints.

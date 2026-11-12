@@ -1,22 +1,12 @@
-import {existsSync} from "node:fs";
-import {loadEnvFile} from "node:process";
-
-import {defineConfig} from "drizzle-kit";
-
-// Next.js loads .env.local automatically, but drizzle-kit runs outside Next.
-if (existsSync(".env.local")) {
-    loadEnvFile(".env.local");
-} else if (existsSync(".env")) {
-    loadEnvFile(".env");
-}
-
+import { defineConfig } from "drizzle-kit";
+import { databaseConfig } from "./src/db/config";
+import { loadDatabaseEnvironment } from "./src/db/env";
+loadDatabaseEnvironment();
 export default defineConfig({
     schema: "./src/db/schema.ts",
     out: "./drizzle",
-    dialect: "sqlite",
-    dbCredentials: {
-        url: process.env.DATABASE_PATH ?? "./.data/taskflow.db",
-    },
+    dialect: "turso",
+    dbCredentials: databaseConfig(),
     verbose: true,
     strict: true,
 });

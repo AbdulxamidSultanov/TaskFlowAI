@@ -28,3 +28,13 @@ Retain qualifying friction even if it is later fixed or worked around; record th
 Before the final response, run one reporting pass. If candidates remain, from this file's directory run `npx --no-install next internal agent-feedback-instructions` once without piping or truncating its output. Follow its output or error guidance. If a network sandbox blocks it, retry with network access; if it still returns no output, continue normally.
 
 <!-- END:nextjs-agent-feedback -->
+
+## TaskFlowAI business invariants
+
+- Workspace membership is the organization boundary. Use server-side task/project/person scopes for every read and mutation; never rely on UI visibility for authorization.
+- Keep task/tag/history writes in one transaction. Validate related workspace IDs, date ranges, dependency cycles and reporting cycles.
+- Default development uses local SQLite. Do not run db:setup, db:seed or db:reset on an existing working database without an explicit request to erase it. db:migrate makes a verified local database backup; files need a separate backup.
+- npm run dev/start also runs the reminder worker. Production requires a strong AUTH_SECRET and a persistent worker/storage deployment.
+- Time/difficulty/reason analytics describe recorded work, not a score of employee worth. Never invent violation counts or causal explanations.
+- Run npm test, npm run typecheck, npm run lint and npm run build after business-logic changes. Tests must use disposable databases.
+- Current behavior and deployment limitations: docs/time-management.md.

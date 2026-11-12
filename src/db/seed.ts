@@ -1,6 +1,6 @@
 import bcrypt from "bcryptjs";
 
-import {db} from "./index";
+import { db } from "./index";
 import {
     aiConversations,
     aiMessages,
@@ -20,7 +20,7 @@ import {
     workspaceMembers,
     workspaces,
 } from "./schema";
-import type {TaskPriority, TaskStatus} from "@/lib/domain";
+import type { TaskPriority, TaskStatus } from "@/lib/domain";
 
 type DepartmentSeed = {
     id: string;
@@ -29,7 +29,7 @@ type DepartmentSeed = {
     description: string;
     color: string;
     prefix: string;
-    people: Array<{name: string; jobTitle: string}>;
+    people: Array<{ name: string; jobTitle: string }>;
     projects: string[];
     tasks: string[];
     comments: string[];
@@ -44,11 +44,11 @@ const departmentSeeds: DepartmentSeed[] = [
         color: "#4F46E5",
         prefix: "ENG",
         people: [
-            {name: "Aziz Karimov", jobTitle: "Engineering Manager"},
-            {name: "Dilnoza Ismoilova", jobTitle: "Senior Backend Engineer"},
-            {name: "Jasur Tursunov", jobTitle: "Frontend Engineer"},
-            {name: "Madina Rakhimova", jobTitle: "QA Engineer"},
-            {name: "Bekzod Yusupov", jobTitle: "DevOps Engineer"},
+            { name: "Aziz Karimov", jobTitle: "Engineering Manager" },
+            { name: "Dilnoza Ismoilova", jobTitle: "Senior Backend Engineer" },
+            { name: "Jasur Tursunov", jobTitle: "Frontend Engineer" },
+            { name: "Madina Rakhimova", jobTitle: "QA Engineer" },
+            { name: "Bekzod Yusupov", jobTitle: "DevOps Engineer" },
         ],
         projects: [
             "Platform Core",
@@ -80,11 +80,11 @@ const departmentSeeds: DepartmentSeed[] = [
         color: "#0EA5E9",
         prefix: "PRD",
         people: [
-            {name: "Kamila Saidova", jobTitle: "Head of Product"},
-            {name: "Rustam Abdullaev", jobTitle: "Product Manager"},
-            {name: "Sevara Nazarova", jobTitle: "Product Analyst"},
-            {name: "Timur Khamidov", jobTitle: "Technical Writer"},
-            {name: "Nigora Yuldasheva", jobTitle: "Product Operations"},
+            { name: "Kamila Saidova", jobTitle: "Head of Product" },
+            { name: "Rustam Abdullaev", jobTitle: "Product Manager" },
+            { name: "Sevara Nazarova", jobTitle: "Product Analyst" },
+            { name: "Timur Khamidov", jobTitle: "Technical Writer" },
+            { name: "Nigora Yuldasheva", jobTitle: "Product Operations" },
         ],
         projects: [
             "Q4 Roadmap",
@@ -116,11 +116,11 @@ const departmentSeeds: DepartmentSeed[] = [
         color: "#EC4899",
         prefix: "DSN",
         people: [
-            {name: "Malika Ergasheva", jobTitle: "Design Lead"},
-            {name: "Sardor Mirzaev", jobTitle: "Product Designer"},
-            {name: "Zarina Akhmedova", jobTitle: "UX Researcher"},
-            {name: "Otabek Sattorov", jobTitle: "Brand Designer"},
-            {name: "Nilufar Qodirova", jobTitle: "Design Systems Designer"},
+            { name: "Malika Ergasheva", jobTitle: "Design Lead" },
+            { name: "Sardor Mirzaev", jobTitle: "Product Designer" },
+            { name: "Zarina Akhmedova", jobTitle: "UX Researcher" },
+            { name: "Otabek Sattorov", jobTitle: "Brand Designer" },
+            { name: "Nilufar Qodirova", jobTitle: "Design Systems Designer" },
         ],
         projects: [
             "Design System 2.0",
@@ -152,11 +152,11 @@ const departmentSeeds: DepartmentSeed[] = [
         color: "#F59E0B",
         prefix: "MKT",
         people: [
-            {name: "Shahnoza Alimova", jobTitle: "Marketing Lead"},
-            {name: "Farrukh Nazarov", jobTitle: "Content Strategist"},
-            {name: "Lola Tashkentova", jobTitle: "Growth Manager"},
-            {name: "Anvar Rakhmonov", jobTitle: "SEO Specialist"},
-            {name: "Gulnora Karimova", jobTitle: "Partnership Manager"},
+            { name: "Shahnoza Alimova", jobTitle: "Marketing Lead" },
+            { name: "Farrukh Nazarov", jobTitle: "Content Strategist" },
+            { name: "Lola Tashkentova", jobTitle: "Growth Manager" },
+            { name: "Anvar Rakhmonov", jobTitle: "SEO Specialist" },
+            { name: "Gulnora Karimova", jobTitle: "Partnership Manager" },
         ],
         projects: [
             "Product Launch",
@@ -188,11 +188,11 @@ const departmentSeeds: DepartmentSeed[] = [
         color: "#10B981",
         prefix: "OPS",
         people: [
-            {name: "Javohir Usmonov", jobTitle: "Operations Manager"},
-            {name: "Munisa Tursunova", jobTitle: "People Partner"},
-            {name: "Akmal Rashidov", jobTitle: "Finance Specialist"},
-            {name: "Feruza Sobirova", jobTitle: "Support Lead"},
-            {name: "Davron Yoldoshev", jobTitle: "Office Manager"},
+            { name: "Javohir Usmonov", jobTitle: "Operations Manager" },
+            { name: "Munisa Tursunova", jobTitle: "People Partner" },
+            { name: "Akmal Rashidov", jobTitle: "Finance Specialist" },
+            { name: "Feruza Sobirova", jobTitle: "Support Lead" },
+            { name: "Davron Yoldoshev", jobTitle: "Office Manager" },
         ],
         projects: [
             "Hiring Pipeline",
@@ -270,6 +270,7 @@ async function resetDatabase() {
     await db.delete(tasks);
     await db.delete(projects);
     await db.delete(workspaceMembers);
+    await db.update(departments).set({ workspaceId: null });
     await db.delete(workspaces);
     await db.delete(sessions);
     await db.delete(userSettings);
@@ -364,10 +365,18 @@ async function main() {
             id: `member-${index + 1}`,
             workspaceId,
             userId: user.id,
-            role: user.role === "manager" ? ("admin" as const) : ("member" as const),
+            role: "member" as const,
+            accessScope:
+                user.role === "manager" ? ("team" as const) : ("self" as const),
+            managerUserId:
+                user.role === "manager"
+                    ? demoUserId
+                    : `user-${departmentSeeds.find((d) => d.id === user.departmentId)!.slug}-1`,
             joinedAt: localDay(-20 + (index % 10), 10),
         })),
     ]);
+
+    await db.update(departments).set({ workspaceId });
 
     const projectRows = departmentSeeds.flatMap((department) =>
         department.projects.map((name, index) => ({
@@ -404,7 +413,7 @@ async function main() {
                 priority: taskPriorities[index],
                 assigneeId: `user-${department.slug}-${((index + 1) % 5) + 1}`,
                 creatorId: `user-${department.slug}-1`,
-                startDate: localDay(-7 + index, 9),
+                startDate: localDay(Math.min(-7 + index, dueOffsets[index]), 9),
                 dueDate: localDay(dueOffsets[index], 18),
                 estimateMinutes: taskEstimates[index],
                 position: index,
@@ -459,8 +468,7 @@ async function main() {
                     description: `${department.name} focus block.`,
                     startAt,
                     endAt: new Date(
-                        startAt.getTime() +
-                            taskEstimates[index] * 60 * 1000,
+                        startAt.getTime() + taskEstimates[index] * 60 * 1000,
                     ),
                     allDay: false,
                     location: index % 2 === 0 ? "Zoom" : "Meeting room A",
@@ -504,10 +512,7 @@ async function main() {
                     body: `${title} — ${department.name}.`,
                     entityType: "task",
                     entityId: `task-${department.slug}-${index + 1}`,
-                    readAt:
-                        index % 3 === 0
-                            ? localDay(-(index + 1), 12)
-                            : null,
+                    readAt: index % 3 === 0 ? localDay(-(index + 1), 12) : null,
                     createdAt,
                 };
             }),
@@ -533,9 +538,7 @@ async function main() {
             entityType: "department",
             entityId: department.id,
             readAt: index === 0 ? new Date(Date.now() - 3_600_000) : null,
-            createdAt: new Date(
-                Date.now() - (index * 26 + 2) * 3_600_000,
-            ),
+            createdAt: new Date(Date.now() - (index * 26 + 2) * 3_600_000),
         })),
     );
 

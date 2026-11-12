@@ -1,3 +1,4 @@
+import { taskScope, departmentScope } from "@/lib/auth/scope";
 import {
     and,
     asc,
@@ -12,12 +13,12 @@ import {
     sql,
 } from "drizzle-orm";
 
-import {db} from "@/db";
-import {departments, tasks} from "@/db/schema";
-import {ApiError, handleRoute, ok, parseQuery} from "@/lib/api/http";
-import {analyticsQuerySchema} from "@/lib/api/schemas";
-import {getAccessibleWorkspaceIds} from "@/lib/auth/guards";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { departments, tasks } from "@/db/schema";
+import { ApiError, handleRoute, ok, parseQuery } from "@/lib/api/http";
+import { analyticsQuerySchema } from "@/lib/api/schemas";
+import { getAccessibleWorkspaceIds } from "@/lib/auth/guards";
+import { requireUser } from "@/lib/auth/session";
 
 export async function GET(request: Request) {
     return handleRoute(async () => {
@@ -30,7 +31,7 @@ export async function GET(request: Request) {
             throw new ApiError(403, "Workspace access denied", "FORBIDDEN");
         }
 
-        const baseConditions = [];
+        const baseConditions = [await taskScope(user, query.workspaceId)];
         if (query.workspaceId) {
             baseConditions.push(eq(tasks.workspaceId, query.workspaceId));
         } else {
@@ -64,9 +65,9 @@ export async function GET(request: Request) {
             upcoming,
             recentlyCompleted,
         ] = await Promise.all([
-            db.select({value: count()}).from(tasks).where(taskWhere),
+            db.select({ value: count() }).from(tasks).where(taskWhere),
             db
-                .select({value: count()})
+                .select({ value: count() })
                 .from(tasks)
                 .where(
                     taskWhere
@@ -74,7 +75,7 @@ export async function GET(request: Request) {
                         : eq(tasks.status, "completed"),
                 ),
             db
-                .select({value: count()})
+                .select({ value: count() })
                 .from(tasks)
                 .where(
                     taskWhere
@@ -89,12 +90,12 @@ export async function GET(request: Request) {
                           ),
                 ),
             db
-                .select({status: tasks.status, value: count()})
+                .select({ status: tasks.status, value: count() })
                 .from(tasks)
                 .where(taskWhere)
                 .groupBy(tasks.status),
             db
-                .select({priority: tasks.priority, value: count()})
+                .select({ priority: tasks.priority, value: count() })
                 .from(tasks)
                 .where(taskWhere)
                 .groupBy(tasks.priority),
@@ -115,9 +116,12 @@ export async function GET(request: Request) {
                     ),
                 )
                 .where(
-                    query.departmentId
-                        ? eq(departments.id, query.departmentId)
-                        : undefined,
+                    and(
+                        await departmentScope(user),
+                        query.departmentId
+                            ? eq(departments.id, query.departmentId)
+                            : undefined,
+                    ),
                 )
                 .groupBy(departments.id)
                 .orderBy(asc(departments.name)),
@@ -182,7 +186,9 @@ export async function GET(request: Request) {
                 open: total - completed,
                 overdue: overdueRows[0]?.value ?? 0,
                 completionRate:
-                    total === 0 ? 0 : Math.round((completed / total) * 1000) / 10,
+                    total === 0
+                        ? 0
+                        : Math.round((completed / total) * 1000) / 10,
             },
             byStatus: byStatus.map((row) => ({
                 status: row.status,

@@ -1,10 +1,10 @@
-import {eq} from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
-import {db} from "@/db";
-import {userSettings} from "@/db/schema";
-import {handleRoute, ok, parseBody} from "@/lib/api/http";
-import {settingsUpdateSchema} from "@/lib/api/schemas";
-import {requireUser} from "@/lib/auth/session";
+import { db } from "@/db";
+import { userSettings } from "@/db/schema";
+import { handleRoute, ok, parseBody } from "@/lib/api/http";
+import { settingsUpdateSchema } from "@/lib/api/schemas";
+import { requireUser } from "@/lib/auth/session";
 
 async function getOrCreateSettings(userId: string) {
     let [settings] = await db
@@ -16,7 +16,7 @@ async function getOrCreateSettings(userId: string) {
     if (!settings) {
         [settings] = await db
             .insert(userSettings)
-            .values({userId})
+            .values({ userId })
             .returning();
     }
 
@@ -39,20 +39,26 @@ export async function PATCH(request: Request) {
         const [settings] = await db
             .update(userSettings)
             .set({
-                ...(input.theme === undefined ? {} : {theme: input.theme}),
-                ...(input.locale === undefined ? {} : {locale: input.locale}),
+                ...(input.theme === undefined ? {} : { theme: input.theme }),
+                ...(input.locale === undefined ? {} : { locale: input.locale }),
                 ...(input.dailySummaryEmail === undefined
                     ? {}
-                    : {dailySummaryEmail: input.dailySummaryEmail}),
+                    : { dailySummaryEmail: input.dailySummaryEmail }),
                 ...(input.overduePush === undefined
                     ? {}
-                    : {overduePush: input.overduePush}),
+                    : { overduePush: input.overduePush }),
                 ...(input.teamMentions === undefined
                     ? {}
-                    : {teamMentions: input.teamMentions}),
+                    : { teamMentions: input.teamMentions }),
                 ...(input.aiModel === undefined
                     ? {}
-                    : {aiModel: input.aiModel}),
+                    : { aiModel: input.aiModel }),
+                ...(input.taskReminders === undefined
+                    ? {}
+                    : { taskReminders: input.taskReminders }),
+                ...(input.reminderHours === undefined
+                    ? {}
+                    : { reminderHours: input.reminderHours }),
                 updatedAt: new Date(),
             })
             .where(eq(userSettings.userId, user.id))

@@ -1,18 +1,19 @@
 "use client";
+import { useWorkspace } from "@/components/workspace/workspace-provider";
 
-import {useTranslations} from "next-intl";
-import {useEffect, useState} from "react";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
 
-import {Button} from "@/components/ui/button";
-import {Field, Input, Textarea} from "@/components/ui/input";
-import {Modal} from "@/components/ui/modal";
-import {useToast} from "@/components/ui/toast";
+import { Button } from "@/components/ui/button";
+import { Field, Input, Textarea } from "@/components/ui/input";
+import { Modal } from "@/components/ui/modal";
+import { useToast } from "@/components/ui/toast";
 import {
     useCreateDepartmentMutation,
     useUpdateDepartmentMutation,
 } from "@/lib/redux/api";
-import type {DepartmentWithCounts} from "@/lib/redux/types";
-import {getApiErrorMessage} from "@/lib/utils";
+import type { DepartmentWithCounts } from "@/lib/redux/types";
+import { getApiErrorMessage } from "@/lib/utils";
 
 const colors = [
     "#4F46E5",
@@ -37,6 +38,7 @@ export function DepartmentFormDialog({
     const t = useTranslations("departmentForm");
     const tCommon = useTranslations("common");
     const toast = useToast();
+    const { workspace } = useWorkspace();
 
     const [createDepartment, createState] = useCreateDepartmentMutation();
     const [updateDepartment, updateState] = useUpdateDepartmentMutation();
@@ -90,6 +92,7 @@ export function DepartmentFormDialog({
                 toast.success(t("updated"));
             } else {
                 await createDepartment({
+                    workspaceId: workspace.id,
                     name: name.trim(),
                     slug: slug.trim(),
                     description: description.trim() || null,
@@ -115,21 +118,14 @@ export function DepartmentFormDialog({
                     <Button variant="outline" onClick={onClose}>
                         {tCommon("cancel")}
                     </Button>
-                    <Button
-                        onClick={() => void submit()}
-                        loading={saving}
-                    >
+                    <Button onClick={() => void submit()} loading={saving}>
                         {isEdit ? tCommon("saveChanges") : t("create")}
                     </Button>
                 </>
             }
         >
             <div className="grid gap-4 sm:grid-cols-2">
-                <Field
-                    label={t("name")}
-                    required
-                    error={errors.name}
-                >
+                <Field label={t("name")} required error={errors.name}>
                     <Input
                         value={name}
                         onChange={(event) => {
@@ -163,15 +159,10 @@ export function DepartmentFormDialog({
                         }
                     />
                 </Field>
-                <Field
-                    className="sm:col-span-2"
-                    label={t("description")}
-                >
+                <Field className="sm:col-span-2" label={t("description")}>
                     <Textarea
                         value={description}
-                        onChange={(event) =>
-                            setDescription(event.target.value)
-                        }
+                        onChange={(event) => setDescription(event.target.value)}
                         maxLength={500}
                     />
                 </Field>

@@ -1,7 +1,7 @@
 "use client";
 
-import {useLocale, useTranslations} from "next-intl";
-import {Building2} from "lucide-react";
+import { useLocale, useTranslations } from "next-intl";
+import { Building2 } from "lucide-react";
 import {
     createContext,
     type ReactNode,
@@ -10,22 +10,19 @@ import {
     useMemo,
 } from "react";
 
-import {useRouter} from "@/i18n/navigation";
-import {
-    useGetMeQuery,
-    useGetWorkspacesQuery,
-} from "@/lib/redux/api";
-import {useAppDispatch, useAppSelector} from "@/lib/redux/hooks";
-import {setActiveWorkspace} from "@/lib/redux/workspace-slice";
+import { useRouter } from "@/i18n/navigation";
+import { useGetMeQuery, useGetWorkspacesQuery } from "@/lib/redux/api";
+import { useAppDispatch, useAppSelector } from "@/lib/redux/hooks";
+import { setActiveWorkspace } from "@/lib/redux/workspace-slice";
 import type {
     AuthUser,
     Membership,
     UserSettings,
     WorkspaceListItem,
 } from "@/lib/redux/types";
-import type {WorkspaceRole} from "@/lib/domain";
-import {getApiErrorStatus} from "@/lib/utils";
-import {PageLoader} from "@/components/ui/states";
+import type { WorkspaceRole } from "@/lib/domain";
+import { getApiErrorStatus } from "@/lib/utils";
+import { PageLoader } from "@/components/ui/states";
 
 type WorkspaceContextValue = {
     user: AuthUser;
@@ -43,7 +40,7 @@ type WorkspaceContextValue = {
 
 const WorkspaceContext = createContext<WorkspaceContextValue | null>(null);
 
-export function WorkspaceProvider({children}: {children: ReactNode}) {
+export function WorkspaceProvider({ children }: { children: ReactNode }) {
     const t = useTranslations("workspaceState");
     const locale = useLocale();
     const router = useRouter();
@@ -119,9 +116,11 @@ export function WorkspaceProvider({children}: {children: ReactNode}) {
             canManageWorkspace: role === "owner" || role === "admin",
             canEdit: role !== "viewer",
             isGlobalAdmin: me.user.role === "admin",
-            canManageUsers: me.user.role === "admin" || me.user.role === "manager",
-            canManageDepartments:
-                me.user.role === "admin" || me.user.role === "manager",
+            canManageUsers:
+                role === "owner" ||
+                role === "admin" ||
+                workspace.accessScope === "team",
+            canManageDepartments: role === "owner" || role === "admin",
         };
     }, [me, workspace, workspaces]);
 
@@ -187,7 +186,7 @@ export function WorkspaceProvider({children}: {children: ReactNode}) {
                         {t("openSettings")}
                     </button>
                     <p className="mt-4 text-xs text-text-muted">
-                        {t("askAdmin", {locale})}
+                        {t("askAdmin", { locale })}
                     </p>
                 </div>
             </div>

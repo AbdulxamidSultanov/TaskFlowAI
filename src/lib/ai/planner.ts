@@ -1,8 +1,29 @@
-import {and, asc, eq, ne} from "drizzle-orm";
+import {
+    and,
+    asc,
+    eq,
+    ne,
+    isNull,
+    lt,
+    gt,
+    or,
+    inArray,
+    sql,
+} from "drizzle-orm";
 
-import {db} from "@/db";
-import {aiPlanItems, aiPlans, projects, tasks} from "@/db/schema";
-import {priorityWeight} from "@/lib/domain";
+import { db } from "@/db";
+import {
+    aiPlanItems,
+    aiPlans,
+    projects,
+    tasks,
+    users,
+    calendarEvents,
+} from "@/db/schema";
+import { dateAtHour } from "@/lib/time-zone";
+import { requireWorkspaceMember } from "@/lib/auth/guards";
+import { ApiError } from "@/lib/api/http";
+import { priorityWeight } from "@/lib/domain";
 
 export type PlanInput = {
     userId: string;
@@ -11,17 +32,53 @@ export type PlanInput = {
     availableMinutes?: number;
 };
 
-function atLocalHour(base: Date, hour: number, minute = 0) {
-    const date = new Date(base);
-    date.setHours(hour, minute, 0, 0);
-    return date;
-}
-
 export async function generatePlan(input: PlanInput) {
     const availableMinutes = input.availableMinutes ?? 480;
+    const [person] = await db
+        .select()
+        .from(users)
+        .where(eq(users.id, input.userId));
+    if (!person?.isActive)
+        throw new ApiError(403, "User unavailable", "FORBIDDEN");
+    await requireWorkspaceMember(
+        { ...person, department: null },
+        input.workspaceId,
+    );
     const baseDate = input.date ? new Date(input.date) : new Date();
-    const dayStart = atLocalHour(baseDate, 9);
-    const dayEnd = atLocalHour(baseDate, 18);
+    const date = new Intl.DateTimeFormat("en-CA", {
+        timeZone: person.timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(baseDate);
+    const dayStart = dateAtHour(date, person.timezone, 9);
+    const dayEnd = dateAtHour(date, person.timezone, 18);
+    const occupied = await db
+        .select()
+        .from(calendarEvents)
+        .where(
+            and(
+                eq(calendarEvents.workspaceId, input.workspaceId),
+                lt(calendarEvents.startAt, dayEnd),
+                gt(calendarEvents.endAt, dayStart),
+                or(
+                    eq(calendarEvents.createdById, input.userId),
+                    inArray(
+                        calendarEvents.taskId,
+                        db
+                            .select({ id: tasks.id })
+                            .from(tasks)
+                            .where(
+                                and(
+                                    eq(tasks.workspaceId, input.workspaceId),
+                                    eq(tasks.assigneeId, input.userId),
+                                ),
+                            ),
+                    ),
+                ),
+            ),
+        )
+        .orderBy(asc(calendarEvents.startAt));
 
     const taskFields = {
         id: tasks.id,
@@ -35,7 +92,7 @@ export async function generatePlan(input: PlanInput) {
         projectKey: projects.key,
     };
 
-    let openTasks = await db
+    const openTasks = await db
         .select(taskFields)
         .from(tasks)
         .innerJoin(projects, eq(projects.id, tasks.projectId))
@@ -44,24 +101,12 @@ export async function generatePlan(input: PlanInput) {
                 eq(tasks.workspaceId, input.workspaceId),
                 eq(tasks.assigneeId, input.userId),
                 ne(tasks.status, "completed"),
+                ne(tasks.status, "blocked"),
+                isNull(tasks.archivedAt),
+                sql`${tasks.id} NOT IN (select d.task_id from task_dependencies d join tasks blocker on blocker.id=d.depends_on_id where blocker.status!='completed')`,
             ),
         )
         .orderBy(asc(tasks.dueDate));
-
-    if (openTasks.length === 0) {
-        openTasks = await db
-            .select(taskFields)
-            .from(tasks)
-            .innerJoin(projects, eq(projects.id, tasks.projectId))
-            .where(
-                and(
-                    eq(tasks.workspaceId, input.workspaceId),
-                    ne(tasks.status, "completed"),
-                ),
-            )
-            .orderBy(asc(tasks.dueDate))
-            .limit(12);
-    }
 
     const sorted = openTasks.sort((a, b) => {
         const priorityDelta =
@@ -87,14 +132,22 @@ export async function generatePlan(input: PlanInput) {
         if (usedMinutes >= availableMinutes) break;
 
         const duration = Math.min(
-            task.estimateMinutes ?? 45,
-            Math.max(15, availableMinutes - usedMinutes),
+            task.estimateMinutes && task.estimateMinutes > 0
+                ? task.estimateMinutes
+                : 45,
+            Math.max(0, availableMinutes - usedMinutes),
         );
 
         if (cursor >= dayEnd) break;
 
-        const endAt = new Date(cursor.getTime() + duration * 60_000);
-        if (endAt > dayEnd) break;
+        let endAt = new Date(cursor.getTime() + duration * 60_000);
+        for (const event of occupied) {
+            if (cursor < event.endAt && endAt > event.startAt) {
+                cursor = new Date(event.endAt);
+                endAt = new Date(cursor.getTime() + duration * 60000);
+            }
+        }
+        if (endAt > dayEnd) continue;
 
         const reasons = [];
         if (task.priority === "urgent" || task.priority === "high") {
@@ -129,34 +182,37 @@ export async function generatePlan(input: PlanInput) {
             : `${blocks.length} task${blocks.length === 1 ? "" : "s"} planned for ${hours}h${minutes ? ` ${minutes}m` : ""}.`;
     const rationale =
         "Rule-based plan: urgent and high-priority tasks first, then tasks with the nearest due date. " +
-        "Each task gets its estimate (or 45 minutes by default), with a 10-minute buffer between blocks.";
+        "Each task gets its estimate (or 45 minutes by default), with a 10-minute buffer between blocks. Personal calendar events are excluded, blocked dependencies are skipped, and hours use the profile timezone.";
 
-    const [plan] = await db
-        .insert(aiPlans)
-        .values({
-            workspaceId: input.workspaceId,
-            userId: input.userId,
-            date: dayStart,
-            summary,
-            rationale,
-            availableMinutes,
-        })
-        .returning({id: aiPlans.id});
+    const planId = await db.transaction(async (tx) => {
+        const [plan] = await tx
+            .insert(aiPlans)
+            .values({
+                workspaceId: input.workspaceId,
+                userId: input.userId,
+                date: dayStart,
+                summary,
+                rationale,
+                availableMinutes,
+            })
+            .returning({ id: aiPlans.id });
 
-    if (blocks.length) {
-        await db.insert(aiPlanItems).values(
-            blocks.map((block, index) => ({
-                planId: plan.id,
-                taskId: block.taskId,
-                startAt: block.startAt,
-                endAt: block.endAt,
-                position: index,
-                reason: block.reason,
-            })),
-        );
-    }
+        if (blocks.length) {
+            await tx.insert(aiPlanItems).values(
+                blocks.map((block, index) => ({
+                    planId: plan.id,
+                    taskId: block.taskId,
+                    startAt: block.startAt,
+                    endAt: block.endAt,
+                    position: index,
+                    reason: block.reason,
+                })),
+            );
+        }
 
-    return getPlan(plan.id);
+        return plan.id;
+    });
+    return getPlan(planId);
 }
 
 export async function getPlan(planId: string) {
@@ -195,7 +251,7 @@ export async function getPlan(planId: string) {
         .where(eq(aiPlanItems.planId, planId))
         .orderBy(asc(aiPlanItems.position));
 
-    return {...plan, items};
+    return { ...plan, items };
 }
 
 export function assistantReply(input: {

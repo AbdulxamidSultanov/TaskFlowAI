@@ -5,7 +5,7 @@
 ## Стек
 
 - **Next.js 16.4.2** — App Router, Route Handlers.
-- **SQLite** через `better-sqlite3` — файл `.data/taskflow.db`.
+- **SQLite/libSQL** через `@libsql/client` (better-sqlite3 используется инструментами разработки) — файл `.data/taskflow.db`.
 - **Drizzle ORM 0.45** — схема, запросы и миграции.
 - **Zod 4** — валидация тела и query-параметров.
 - **bcryptjs** — хеширование паролей.
@@ -50,10 +50,10 @@ curl http://localhost:3000/api/health
 ## Переменные окружения
 
 ```env
-DATABASE_PATH=./.data/taskflow.db
+DATABASE_URL=file:./.data/taskflow.db
 ```
 
-Если `DATABASE_PATH` не задан, используется `./.data/taskflow.db`. Директория `.data/` добавлена в `.gitignore`. Скрипты `db:seed` и `drizzle-kit` читают `.env.local` автоматически.
+Приложение, seed и миграции используют общий DATABASE_URL. Совместимый локальный DATABASE_PATH используется только если DATABASE_URL отсутствует; по умолчанию — `.data/taskflow.db`. Директория `.data/` добавлена в `.gitignore`. Скрипты `db:seed` и `drizzle-kit` читают `.env.local` автоматически.
 
 ## Демо-доступ
 
@@ -119,7 +119,7 @@ Seed использует фиксированные данные и относ�
 
 ## Аутентификация
 
-Пароль хранится как bcrypt-хеш. При логине создаётся случайный токен, в БД хранится только SHA-256 хеш токена. Cookie:
+Пароль хранится как bcrypt-хеш. При логине создаётся подписанная HMAC cookie с userId, сроком, версией сессии и случайным nonce; в таблице sessions хранится SHA-256 хеш полной cookie. Сессия проверяется и может быть отозвана сервером. Смена пароля увеличивает sessionVersion. Cookie:
 
 - `HttpOnly`
 - `SameSite=Lax`
@@ -170,17 +170,17 @@ curl -b cookies.txt http://localhost:3000/api/auth/me
 | Метод | Путь | Доступ | Описание |
 |---|---|---|---|
 | GET | `/api/departments` | auth | Список отделов + counts |
-| POST | `/api/departments` | admin/manager | Создать отдел |
+| POST | `/api/departments` | workspace owner/admin | Создать отдел |
 | GET | `/api/departments/[id]` | auth | Отдел, участники, counts |
-| PATCH | `/api/departments/[id]` | admin/manager | Обновить |
-| DELETE | `/api/departments/[id]` | admin | Удалить пустой отдел |
+| PATCH | `/api/departments/[id]` | workspace owner/admin | Обновить |
+| DELETE | `/api/departments/[id]` | workspace owner/admin | Удалить пустой отдел |
 
 ### Users
 
 | Метод | Путь | Доступ | Описание |
 |---|---|---|---|
 | GET | `/api/users` | auth | Список, фильтры `departmentId`, `role`, `search` |
-| POST | `/api/users` | admin/manager | Создать пользователя |
+| POST | `/api/users` | workspace owner/admin/team supervisor | Создать пользователя |
 | GET | `/api/users/[id]` | self / admin / manager | Профиль, статистика, членства |
 | PATCH | `/api/users/[id]` | self / admin | Обновить профиль; роль и отдел — admin |
 | DELETE | `/api/users/[id]` | admin | Удалить пользователя |
@@ -203,10 +203,10 @@ curl -b cookies.txt http://localhost:3000/api/auth/me
 | Метод | Путь | Доступ | Описание |
 |---|---|---|---|
 | GET | `/api/projects` | auth | Фильтры `workspaceId`, `departmentId`, `status`, `search` |
-| POST | `/api/projects` | workspace member | Создать |
+| POST | `/api/projects` | workspace owner/admin/team supervisor | Создать |
 | GET | `/api/projects/[id]` | workspace member | Проект + задачи |
-| PATCH | `/api/projects/[id]` | workspace member | Обновить |
-| DELETE | `/api/projects/[id]` | workspace member | Удалить |
+| PATCH | `/api/projects/[id]` | workspace owner/admin | Обновить |
+| DELETE | `/api/projects/[id]` | workspace owner/admin | Архивировать проект |
 
 ### Tasks
 
@@ -216,7 +216,7 @@ curl -b cookies.txt http://localhost:3000/api/auth/me
 | POST | `/api/tasks` | workspace member | Создать |
 | GET | `/api/tasks/[id]` | workspace member | Задача, теги, комментарии |
 | PATCH | `/api/tasks/[id]` | workspace member | Обновить |
-| DELETE | `/api/tasks/[id]` | workspace member | Удалить |
+| DELETE | `/api/tasks/[id]` | writable task scope | Архивировать задачу |
 | GET | `/api/tasks/[id]/comments` | workspace member | Комментарии |
 | POST | `/api/tasks/[id]/comments` | workspace member | Добавить комментарий |
 
@@ -296,7 +296,7 @@ curl -b cookies.txt http://localhost:3000/api/auth/me
 }
 ```
 
-Планировщик **детерминированный, без внешнего LLM**: сортирует открытые задачи по приоритету и дедлайну, режет день на блоки с оценкой времени и буфером 10 минут. Если у пользователя нет назначенных задач, берутся открытые задачи workspace. Ответ ассистента в чате также строится по правилам и статистике задач. Это позволяет backend работать без `OPENAI_API_KEY`; провайдер LLM можно добавить позже, не меняя API.
+Планировщик **детерминированный, без внешнего LLM**: сортирует открытые задачи по приоритету и дедлайну, режет день на блоки с оценкой времени и буфером 10 минут. Если назначенных задач нет, чужие задачи не подставляются. Ответ ассистента в чате также строится по правилам и статистике задач. Это позволяет backend работать без `OPENAI_API_KEY`; провайдер LLM можно добавить позже, не меняя API.
 
 ### Settings
 
@@ -331,7 +331,15 @@ curl -b cookies.txt http://localhost:3000/api/auth/me
 ## Ограничения и production
 
 - SQLite подходит для локальной разработки, демо и одного инстанса. На Vercel/serverless файл `.data/taskflow.db` не является постоянным хранилищем.
-- Для production нужно заменить `src/db/index.ts` и `drizzle.config.ts` на Postgres/Turso и перегенерировать миграции. Слой доступа к БД изолирован в `src/db` и `src/lib/services`.
+- Runtime и CLI уже поддерживают SQLite/libSQL/Turso через общий DATABASE_URL. Перед удалёнными миграциями нужна резервная копия провайдера и CONFIRM_REMOTE_MIGRATION=1; удалённое развёртывание в этой среде не проверялось.
 - Демо-пароли нельзя использовать в production.
-- Нет rate limiting и CSRF-токенов: для публичного production-деплоя добавьте rate limit на `/api/auth/*`, проверку `Origin` для мутаций и смену cookie-политики при необходимости.
+- Auth имеет ограничение 20 попыток на нормализованный email за 15 минут. Мутации проверяют Origin, cookie имеет SameSite=Lax; для внешнего HTTPS-origin задайте APP_ORIGINS. Это не заменяет инфраструктурную защиту от распределённого перебора по разным email.
 - `GET /api/health` публичный, не содержит секретов.
+
+## Расширения от 12 ноября 2026
+
+Дополнены `workspace_members` (руководитель/scope), `tasks` (архив), `user_settings` (напоминания), `ai_task_drafts` (метаданные подтверждения), `users` (версия сессий), `departments` (workspace). Добавлены time_entries, task_activity, task_dependencies, reminder_deliveries, auth_attempts, task_attachments, workspace_invitations и ограничения целостности SQL.
+
+AI-публикация разрешена автору черновика либо администратору workspace, с повторной проверкой области доступа. Обычные CRUD задач транзакционны; циклы подзадач запрещены. Справочники и аналитика ограничены scope пользователя.
+
+Полное описание новых маршрутов: [time-management.md](time-management.md).
