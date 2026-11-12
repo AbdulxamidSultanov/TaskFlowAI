@@ -101,7 +101,7 @@
     },
     "navigation": {
         "heading": "Navigatsiya",
-        "dashboard": "Boshqaruv paneli",
+        "dashboard": "Mening kunim",
         "tasks": "Vazifalar",
         "calendar": "Taqvim",
         "aiAssistant": "AI yordamchi",
@@ -114,7 +114,9 @@
         "newBadge": "Yangi",
         "projects": "Loyihalar",
         "team": "Jamoa",
-        "timeManagement": "Vaqt boshqaruvi"
+        "timeManagement": "Vaqt boshqaruvi",
+        "overview": "Umumiy ko‘rinish",
+        "teamControl": "Jamoa nazorati"
     },
     "status": {
         "todo": "Bajarilishi kerak",
@@ -128,7 +130,8 @@
         "current": "Joriy",
         "upcoming": "Yaqinlashayotgan",
         "in_progress": "Bajarilmoqda",
-        "under_review": "Tekshiruvda"
+        "under_review": "Tekshiruvda",
+        "cancelled": "Bekor qilingan"
     },
     "priority": {
         "low": "Past",
@@ -528,7 +531,9 @@
         "send": "Yuborish",
         "status": "Holat",
         "updateError": "Vazifani yangilab bo'lmadi",
-        "updated": "Vazifa yangilandi"
+        "updated": "Vazifa yangilandi",
+        "unavailable": "Vazifa mavjud emas, o‘chirilgan yoki yuklanmadi.",
+        "retry": "Qayta urinish"
     },
     "projects": {
         "activeProjects": "Faol loyihalar",
@@ -923,7 +928,11 @@
         "workspace": "Butun ish maydoni",
         "violationsUnavailable": "Qoidalar va ma’lumotlar belgilanmagani uchun qoidabuzarliklar hisoblanmaydi.",
         "error": "Tuzilmani o‘zgartirib bo‘lmadi",
-        "retry": "Qayta urinish"
+        "retry": "Qayta urinish",
+        "search": "Xodimni qidirish",
+        "collapse": "Tarmoqni yopish",
+        "expand": "Tarmoqni ochish",
+        "tasks": "Xodimning ruxsat berilgan vazifalari"
     },
     "reminders": {
         "title": "Vazifa eslatmalari",
@@ -973,5 +982,83 @@
         "all": "Barcha qurilmalardan chiqish",
         "confirm": "Barcha seanslar, jumladan joriysi ham yakunlansinmi?",
         "error": "Seansni yakunlab bo‘lmadi"
+    },
+    "dayBoard": {
+        "title": "Mening kunim",
+        "description": "E’tibor talab qiladigan shaxsiy vazifalar va amallar.",
+        "teamTitle": "Jamoa nazorati",
+        "teamDescription": "Jamoangizdagi muddati o‘tgan, bloklangan va tekshiruvdagi ishlar.",
+        "uniqueTasks": "ta takrorlanmas vazifa",
+        "today": "Bugun",
+        "overdue": "Muddati o‘tgan",
+        "action": "Amalim talab qilinadi",
+        "blocked": "Bloklangan",
+        "review": "Tekshiruv kutilmoqda",
+        "empty": "Bu guruhda vazifa yo‘q.",
+        "loading": "Vazifalar yuklanmoqda…",
+        "error": "Vazifalarni yuklab bo‘lmadi.",
+        "forbidden": "Ushbu jamoani nazorat qilish huquqingiz yo‘q.",
+        "retry": "Qayta urinish",
+        "employee": "Xodim",
+        "all": "Barchasi",
+        "status": "Holat",
+        "from": "Muddat boshi",
+        "to": "Muddat oxiri",
+        "deadline": "Muddat",
+        "noDeadline": "Belgilanmagan",
+        "unassigned": "Tayinlanmagan",
+        "blockReason": "Bloklash sababi",
+        "missingReason": "Sabab hali ko‘rsatilmagan",
+        "reviewHint": "Natijani tekshiring: qabul qiling yoki izoh bilan qaytaring.",
+        "next": "Keyingi amal",
+        "nextUnblock": "Bloklash sababini bartaraf etish",
+        "nextReview": "Natijani tekshirish",
+        "nextWork": "Vazifani bajarish va natijani topshirish",
+        "nextOpen": "Vazifani ochish va amalni aniqlash",
+        "open": "Vazifani ochish",
+        "actionKinds": {
+            "review": "Natijani tekshirish kerak",
+            "response": "Javob talab qilinadi",
+            "unblock": "Blokni yechishga yordam kerak"
+        }
+    },
+    "workflows": {
+        "submit": "Tekshiruvga topshirish",
+        "complete": "Yakunlash",
+        "accept": "Natijani qabul qilish",
+        "rework": "Qayta ishlashga qaytarish",
+        "block": "Blok haqida xabar berish",
+        "unblock": "Blokdan chiqarish",
+        "request": "Amalni so‘rash",
+        "respond": "So‘rovga javob berish",
+        "resolve": "So‘rovga javob",
+        "cancel": "Vazifani bekor qilish",
+        "reason": "Sabab / izoh (kamida 3 belgi)",
+        "helper": "Kim yordam berishi kerak",
+        "defaultSupervisor": "Ijrochining rahbari",
+        "chooseRecipient": "Qabul qiluvchini tanlang",
+        "assignee": "Vazifa ijrochisi",
+        "helperHint": "Faqat vazifaga kirish huquqi bor odamni tanlang. Boshqa bo‘lim uchun avval ishtirokchi qo‘shing.",
+        "save": "Saqlash",
+        "saved": "Amal saqlandi",
+        "error": "Amalni bajarib bo‘lmadi",
+        "blockReason": "Bloklash sababi",
+        "missingReason": "Sabab hali ko‘rsatilmagan",
+        "blockAuthor": "Bloklagan xodim",
+        "submitted": "Natija topshirildi",
+        "accepted": "Natija qabul qilindi",
+        "requiresReview": "Natija tekshiruv talab qiladi",
+        "reviewer": "Tekshiruvchi",
+        "participants": "Vazifa ishtirokchilari",
+        "participantsHint": "Kirish faqat ushbu vazifaga beriladi, qolgan loyiha yoki bo‘limga emas.",
+        "noParticipants": "Qo‘shimcha ishtirokchi yo‘q.",
+        "participant": "Xodim",
+        "participantRole": "Ishtirokchi huquqlari",
+        "chooseParticipant": "Xodimni tanlang",
+        "viewer": "Faqat ko‘rish",
+        "contributor": "Ishtirok: izohlar, fayllar va vaqt",
+        "remove": "Kirishni olib tashlash",
+        "add": "Qo‘shish / yangilash",
+        "retry": "Qayta urinish"
     }
 }

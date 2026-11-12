@@ -17,7 +17,7 @@ export async function organizationTree(user: AuthUser, workspaceId: string) {
             accessScope: workspaceMembers.accessScope,
             role: workspaceMembers.role,
             completed: sql<number>`(select count(*) from tasks where assignee_id=${users.id} and workspace_id=${workspaceId} and status='completed' and archived_at is null)`,
-            overdue: sql<number>`(select count(*) from tasks where assignee_id=${users.id} and workspace_id=${workspaceId} and status!='completed' and due_date<${Date.now()} and archived_at is null)`,
+            overdue: sql<number>`(select count(*) from tasks where assignee_id=${users.id} and workspace_id=${workspaceId} and status not in ('completed','cancelled') and due_date<${Date.now()} and archived_at is null)`,
         })
         .from(workspaceMembers)
         .innerJoin(users, eq(users.id, workspaceMembers.userId))

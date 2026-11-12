@@ -502,17 +502,15 @@ test("AI generation uses scoped context, strict batch quota and duplicate protec
         }),
         { code: "NO_NEW_TASKS" },
     );
-    await database.db
-        .insert(schema.aiTaskDrafts)
-        .values(
-            Array.from({ length: 29 }, (_, i) => ({
-                workspaceId,
-                userId: manager.id,
-                batchId: "quota",
-                title: `Quota ${i}`,
-                projectId,
-            })),
-        );
+    await database.db.insert(schema.aiTaskDrafts).values(
+        Array.from({ length: 29 }, (_, i) => ({
+            workspaceId,
+            userId: manager.id,
+            batchId: "quota",
+            title: `Quota ${i}`,
+            projectId,
+        })),
+    );
     await assert.rejects(
         ai.generateDrafts(manager, {
             workspaceId,
@@ -525,15 +523,13 @@ test("AI generation uses scoped context, strict batch quota and duplicate protec
 test("planner respects profile timezone, personal calendar and atomic saved blocks", async () => {
     const { generatePlan } = await import("../src/lib/ai/planner");
     const { dateAtHour } = await import("../src/lib/time-zone");
-    await database.db
-        .insert(schema.calendarEvents)
-        .values({
-            workspaceId,
-            createdById: employee.id,
-            title: "Personal busy time",
-            startAt: dateAtHour("2030-06-03", employee.timezone, 9),
-            endAt: dateAtHour("2030-06-03", employee.timezone, 11),
-        });
+    await database.db.insert(schema.calendarEvents).values({
+        workspaceId,
+        createdById: employee.id,
+        title: "Personal busy time",
+        startAt: dateAtHour("2030-06-03", employee.timezone, 9),
+        endAt: dateAtHour("2030-06-03", employee.timezone, 11),
+    });
     const plan = await generatePlan({
         userId: employee.id,
         workspaceId,
@@ -605,4 +601,418 @@ test("provider suggestions enforce real dates, 21-day window and project departm
         )!.suggestedDeadline,
         null,
     );
+});
+
+test("task collaboration grants only one task and separates view from actions", async () => {
+    const { setTaskParticipant } = await import(
+        "../src/lib/services/task-participants"
+    );
+    const { requireTaskPermission } = await import(
+        "../src/lib/auth/task-rights"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Cross-department collaboration",
+        assigneeId: employee.id,
+    });
+    const sibling = await taskService.createTask(manager, {
+        projectId,
+        title: "Private sibling",
+        assigneeId: employee.id,
+    });
+    await assert.rejects(scope.requireTaskAccess(other, task!.id), {
+        code: "NOT_FOUND",
+    });
+    await assert.rejects(
+        setTaskParticipant(other, task!.id, other.id, "contributor"),
+        { code: "NOT_FOUND" },
+    );
+    await setTaskParticipant(manager, task!.id, other.id, "viewer");
+    await scope.requireTaskAccess(other, task!.id);
+    await assert.rejects(scope.requireTaskAccess(other, sibling!.id), {
+        code: "NOT_FOUND",
+    });
+    await assert.rejects(scope.requireProjectAccess(other, projectId), {
+        code: "NOT_FOUND",
+    });
+    await assert.rejects(requireTaskPermission(other, task!.id, "comment"), {
+        code: "FORBIDDEN",
+    });
+    await setTaskParticipant(manager, task!.id, other.id, "contributor");
+    await taskService.addComment(other, task!.id, "Task-only contribution");
+    await assert.rejects(
+        taskService.updateTask(other, task!.id, {
+            dueDate: new Date(Date.now() + 3600000).toISOString(),
+        }),
+        { code: "FORBIDDEN" },
+    );
+    await assert.rejects(
+        taskService.updateTask(other, task!.id, { assigneeId: other.id }),
+        { code: "FORBIDDEN" },
+    );
+    await assert.rejects(taskService.deleteTask(other, task!.id), {
+        code: "FORBIDDEN",
+    });
+    await assert.rejects(
+        setTaskParticipant(other, task!.id, other.id, "contributor"),
+        { code: "FORBIDDEN" },
+    );
+    const listed = await taskService.listTasks(
+        other,
+        { workspaceId, search: "Cross-department collaboration" },
+        pagination,
+    );
+    assert.equal(listed.pagination.total, 1);
+    await setTaskParticipant(manager, task!.id, other.id, null);
+    await assert.rejects(scope.requireTaskAccess(other, task!.id), {
+        code: "NOT_FOUND",
+    });
+    assert.equal(
+        (
+            await taskService.listTasks(
+                other,
+                { workspaceId, search: "Cross-department collaboration" },
+                pagination,
+            )
+        ).pagination.total,
+        0,
+    );
+    await setTaskParticipant(manager, task!.id, employee.id, "contributor");
+    await setTaskParticipant(manager, task!.id, employee.id, null);
+    await scope.requireTaskAccess(employee, task!.id);
+});
+test("review distinguishes submission, mandatory rework comment and acceptance", async () => {
+    const { applyTaskWorkflow } = await import(
+        "../src/lib/services/task-workflow"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Reviewable result",
+        assigneeId: employee.id,
+        requiresReview: true,
+    });
+    await taskService.updateTask(employee, task!.id, { status: "completed" });
+    let saved = await taskService.getTaskDetail(task!.id, employee);
+    assert.equal(saved!.status, "under_review");
+    assert.equal(saved!.completedAt, null);
+    assert.ok(saved!.submittedAt);
+    await assert.rejects(
+        applyTaskWorkflow(employee, task!.id, { action: "accept" }),
+        { code: "FORBIDDEN" },
+    );
+    await assert.rejects(
+        applyTaskWorkflow(manager, task!.id, { action: "rework", reason: " " }),
+        { code: "REASON_REQUIRED" },
+    );
+    await applyTaskWorkflow(manager, task!.id, {
+        action: "rework",
+        reason: "Add the missing acceptance criteria",
+    });
+    saved = await taskService.getTaskDetail(task!.id, employee);
+    assert.equal(saved!.status, "in_progress");
+    assert.ok(
+        saved!.comments.some((c) => c.body.includes("acceptance criteria")),
+    );
+    await applyTaskWorkflow(employee, task!.id, { action: "submit" });
+    await applyTaskWorkflow(manager, task!.id, { action: "accept" });
+    saved = await taskService.getTaskDetail(task!.id, employee);
+    assert.equal(saved!.status, "completed");
+    assert.equal(saved!.reviewedById, manager.id);
+    assert.ok(saved!.completedAt);
+});
+test("review permissions cannot survive a contributor downgrade or bypass pending review", async () => {
+    const { applyTaskWorkflow } = await import(
+        "../src/lib/services/task-workflow"
+    );
+    const { setTaskParticipant } = await import(
+        "../src/lib/services/task-participants"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Explicit reviewer access",
+        assigneeId: employee.id,
+    });
+    await setTaskParticipant(manager, task!.id, other.id, "contributor");
+    await taskService.updateTask(manager, task!.id, {
+        reviewerId: other.id,
+        requiresReview: true,
+    });
+    await applyTaskWorkflow(employee, task!.id, { action: "submit" });
+    await assert.rejects(
+        taskService.updateTask(manager, task!.id, { reviewerId: manager.id }),
+        { code: "REVIEW_PENDING" },
+    );
+    await setTaskParticipant(manager, task!.id, other.id, "viewer");
+    await scope.requireTaskAccess(other, task!.id);
+    await assert.rejects(
+        applyTaskWorkflow(other, task!.id, { action: "accept" }),
+        { code: "FORBIDDEN" },
+    );
+    await applyTaskWorkflow(manager, task!.id, {
+        action: "rework",
+        reason: "Please update the result",
+    });
+    const fresh = await taskService.createTask(manager, {
+        projectId,
+        title: "No completion bypass",
+        assigneeId: employee.id,
+    });
+    await assert.rejects(
+        taskService.updateTask(manager, fresh!.id, {
+            requiresReview: true,
+            status: "completed",
+        }),
+        { code: "WORKFLOW_ACTION_REQUIRED" },
+    );
+});
+test("block helper needs prior access; worker notifies once and revocation hides notifications", async () => {
+    const { setTaskParticipant } = await import(
+        "../src/lib/services/task-participants"
+    );
+    const { applyTaskWorkflow } = await import(
+        "../src/lib/services/task-workflow"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Blocked cross-department task",
+        assigneeId: employee.id,
+    });
+    await assert.rejects(
+        applyTaskWorkflow(employee, task!.id, {
+            action: "block",
+            reason: "Need a design decision",
+            targetUserId: other.id,
+        }),
+        { code: "NOT_FOUND" },
+    );
+    await setTaskParticipant(manager, task!.id, other.id, "contributor");
+    await applyTaskWorkflow(employee, task!.id, {
+        action: "block",
+        reason: "Need a design decision",
+        targetUserId: other.id,
+    });
+    await notify.deliverReminders(new Date(), other.id);
+    await notify.deliverReminders(new Date(), other.id);
+    let rows = await database.db
+        .select()
+        .from(schema.notifications)
+        .where(
+            and(
+                eq(schema.notifications.entityId, task!.id),
+                eq(schema.notifications.userId, other.id),
+            ),
+        );
+    assert.equal(rows.length, 1);
+    assert.match(rows[0].body!, /design decision/);
+    await setTaskParticipant(manager, task!.id, other.id, null);
+    rows = await database.db
+        .select()
+        .from(schema.notifications)
+        .where(
+            and(
+                eq(schema.notifications.entityId, task!.id),
+                await notify.notificationScope(other),
+            ),
+        );
+    assert.equal(rows.length, 0);
+    await assert.rejects(
+        applyTaskWorkflow(other, task!.id, { action: "unblock" }),
+        { code: "NOT_FOUND" },
+    );
+    await applyTaskWorkflow(manager, task!.id, { action: "unblock" });
+    const saved = await taskService.getTaskDetail(task!.id, employee);
+    assert.equal(saved!.blockReason, null);
+    assert.equal(saved!.status, "in_progress");
+});
+test("my day honors timezone, unique overlapping groups, action requests and closed tasks", async () => {
+    const { getDayBoard } = await import("../src/lib/services/day-board");
+    const { applyTaskWorkflow } = await import(
+        "../src/lib/services/task-workflow"
+    );
+    const actor = { ...employee, timezone: "America/Bogota" };
+    const now = new Date("2031-03-05T02:00:00Z"); // Local date is March 4.
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Local-day overlap",
+        assigneeId: employee.id,
+        dueDate: "2031-03-04T22:00:00Z",
+    });
+    const closed = await taskService.createTask(manager, {
+        projectId,
+        title: "Cancelled deadline",
+        assigneeId: employee.id,
+        dueDate: "2031-03-04T22:00:00Z",
+    });
+    await applyTaskWorkflow(manager, closed!.id, { action: "cancel" });
+    const result = await getDayBoard(actor, { workspaceId }, false, now);
+    assert.equal(result.day, "2031-03-04");
+    assert.ok(result.groups.today!.some((t) => t.id === task!.id));
+    assert.ok(result.groups.overdue.some((t) => t.id === task!.id));
+    assert.ok(
+        !Object.values(result.groups)
+            .flat()
+            .some((t) => t.id === closed!.id),
+    );
+    const unique = new Set(
+        Object.values(result.groups)
+            .flat()
+            .map((t) => t.id),
+    );
+    assert.equal(result.uniqueCount, unique.size);
+    const visible = await getDayBoard(other, { workspaceId }, false, now);
+    assert.ok(
+        !Object.values(visible.groups)
+            .flat()
+            .some((t) => t.id === task!.id),
+    );
+    const team = await getDayBoard(manager, { workspaceId }, true, now);
+    assert.ok(
+        Object.values(team.groups)
+            .flat()
+            .every((t) => t.departmentId === "dept-engineering"),
+    );
+    await assert.rejects(getDayBoard(employee, { workspaceId }, true, now), {
+        code: "FORBIDDEN",
+    });
+});
+
+test("a contributor can log time and attach files, but revocation stops a running timer", async () => {
+    const { setTaskParticipant } = await import(
+        "../src/lib/services/task-participants"
+    );
+    const { uploadAttachment, downloadAttachment } = await import(
+        "../src/lib/services/attachments"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Contributor work",
+        assigneeId: employee.id,
+    });
+    await setTaskParticipant(manager, task!.id, other.id, "contributor");
+    const entry = await timeService.createTimeEntry(other, {
+        taskId: task!.id,
+    });
+    const file = await uploadAttachment(
+        other,
+        task!.id,
+        new File(["Shared file"], "shared.txt"),
+    );
+    assert.equal(
+        (await downloadAttachment(other, file.id)).data.toString(),
+        "Shared file",
+    );
+    await setTaskParticipant(manager, task!.id, other.id, null);
+    const [stopped] = await database.db
+        .select()
+        .from(schema.timeEntries)
+        .where(eq(schema.timeEntries.id, entry.id));
+    assert.ok(stopped.endAt);
+    await assert.rejects(downloadAttachment(other, file.id), {
+        code: "NOT_FOUND",
+    });
+    await assert.rejects(
+        taskService.addComment(other, task!.id, "No longer authorized"),
+        { code: "NOT_FOUND" },
+    );
+});
+test("an explicit response request appears in my day and requires an actual response", async () => {
+    const { getDayBoard } = await import("../src/lib/services/day-board");
+    const { applyTaskWorkflow } = await import(
+        "../src/lib/services/task-workflow"
+    );
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Response needed",
+        assigneeId: employee.id,
+    });
+    await applyTaskWorkflow(manager, task!.id, {
+        action: "request",
+        targetUserId: employee.id,
+        reason: "Please confirm the acceptance criteria",
+    });
+    const board = await getDayBoard(employee, { workspaceId });
+    const card = board.groups.action!.find((t) => t.id === task!.id)!;
+    assert.ok(card);
+    assert.equal(card.actions[0].kind, "response");
+    assert.match(card.actions[0].reason, /acceptance criteria/);
+    await assert.rejects(
+        applyTaskWorkflow(employee, task!.id, {
+            action: "resolve",
+            requestId: card.actions[0].id,
+            reason: " ",
+        }),
+        { code: "REASON_REQUIRED" },
+    );
+    await applyTaskWorkflow(employee, task!.id, {
+        action: "resolve",
+        requestId: card.actions[0].id,
+        reason: "Criteria confirmed",
+    });
+    assert.ok(
+        !(await getDayBoard(employee, { workspaceId })).groups.action!.some(
+            (t) => t.id === task!.id,
+        ),
+    );
+});
+test("nested reporting teams are visible, neighboring teams and leadership remain hidden", async () => {
+    const { updateReportingLine } = await import(
+        "../src/lib/services/organization"
+    );
+    await updateReportingLine(admin, workspaceId, {
+        userId: "user-design-1",
+        managerUserId: manager.id,
+        accessScope: "team",
+    });
+    await scope.requireTaskAccess(manager, "task-design-1");
+    await assert.rejects(scope.requireTaskAccess(manager, "task-marketing-1"), {
+        code: "NOT_FOUND",
+    });
+    const leadership = await taskService.createTask(admin, {
+        projectId,
+        title: "Leadership only",
+        assigneeId: admin.id,
+    });
+    await assert.rejects(scope.requireTaskAccess(manager, leadership!.id), {
+        code: "NOT_FOUND",
+    });
+    await updateReportingLine(admin, workspaceId, {
+        userId: "user-design-1",
+        managerUserId: admin.id,
+        accessScope: "team",
+    });
+    await assert.rejects(scope.requireTaskAccess(manager, "task-design-1"), {
+        code: "NOT_FOUND",
+    });
+});
+test("changing the deadline replaces pending reminders; cancelled tasks stop the plan", async () => {
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Rescheduled reminder",
+        assigneeId: employee.id,
+        dueDate: new Date(Date.now() + 4 * 3600000).toISOString(),
+    });
+    await notify.deliverReminders(new Date(), employee.id);
+    const pending = () =>
+        database.db
+            .select()
+            .from(schema.notifications)
+            .where(
+                and(
+                    eq(schema.notifications.entityId, task!.id),
+                    eq(schema.notifications.type, "task_due"),
+                ),
+            );
+    assert.equal((await pending()).length, 1);
+    await taskService.updateTask(manager, task!.id, {
+        dueDate: new Date(Date.now() + 72 * 3600000).toISOString(),
+    });
+    assert.equal((await pending()).length, 0);
+    await notify.deliverReminders(new Date(), employee.id);
+    assert.equal((await pending()).length, 0);
+    await taskService.updateTask(manager, task!.id, { status: "cancelled" });
+    await notify.deliverReminders(
+        new Date(Date.now() + 73 * 3600000),
+        employee.id,
+    );
+    assert.equal((await pending()).length, 0);
 });

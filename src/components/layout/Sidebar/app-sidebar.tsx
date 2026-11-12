@@ -8,6 +8,7 @@ import {
     ChevronsUpDown,
     FolderKanban,
     House,
+    ShieldCheck,
     LayoutGrid,
     LifeBuoy,
     LogOut,
@@ -33,6 +34,8 @@ import { cn, fileSize, getApiErrorMessage } from "@/lib/utils";
 
 const navItems = [
     { href: "/dashboard", key: "dashboard", icon: House },
+    { href: "/overview", key: "overview", icon: ChartNoAxesColumn },
+    { href: "/team-control", key: "teamControl", icon: ShieldCheck },
     { href: "/tasks", key: "tasks", icon: SquareCheck },
     { href: "/projects", key: "projects", icon: FolderKanban },
     { href: "/calendar", key: "calendar", icon: CalendarDays },
@@ -233,39 +236,47 @@ export function AppSidebar({
                         {t("heading")}
                     </p>
                     <nav className="flex flex-col gap-0.5">
-                        {navItems.map((item) => {
-                            const Icon = item.icon;
-                            return (
-                                <Link
-                                    key={item.href}
-                                    href={item.href}
-                                    onClick={onClose}
-                                    className={cn(
-                                        "group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary",
-                                        item.href === "/ai-assistant" &&
-                                            "text-accent hover:text-accent",
-                                    )}
-                                >
-                                    <Icon
-                                        size={17}
-                                        className="shrink-0 text-text-muted transition-colors group-hover:text-current"
-                                    />
-                                    <span className="min-w-0 flex-1 truncate">
-                                        {t(item.key)}
-                                    </span>
-                                    {item.href === "/tasks" ? (
-                                        <span className="rounded-full bg-surface-hover px-1.5 text-[10px] tabular-nums text-text-muted">
-                                            {workspace.taskCount}
+                        {navItems
+                            .filter(
+                                (item) =>
+                                    item.href !== "/team-control" ||
+                                    ((["owner", "admin"].includes(role) ||
+                                        workspace.accessScope === "team") &&
+                                        role !== "viewer"),
+                            )
+                            .map((item) => {
+                                const Icon = item.icon;
+                                return (
+                                    <Link
+                                        key={item.href}
+                                        href={item.href}
+                                        onClick={onClose}
+                                        className={cn(
+                                            "group flex items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-text-secondary transition-colors hover:bg-surface-hover hover:text-text-primary",
+                                            item.href === "/ai-assistant" &&
+                                                "text-accent hover:text-accent",
+                                        )}
+                                    >
+                                        <Icon
+                                            size={17}
+                                            className="shrink-0 text-text-muted transition-colors group-hover:text-current"
+                                        />
+                                        <span className="min-w-0 flex-1 truncate">
+                                            {t(item.key)}
                                         </span>
-                                    ) : null}
-                                    {item.href === "/ai-assistant" ? (
-                                        <span className="rounded-full bg-accent/10 px-1.5 text-[9px] font-bold uppercase tracking-wide text-accent">
-                                            {t("newBadge")}
-                                        </span>
-                                    ) : null}
-                                </Link>
-                            );
-                        })}
+                                        {item.href === "/tasks" ? (
+                                            <span className="rounded-full bg-surface-hover px-1.5 text-[10px] tabular-nums text-text-muted">
+                                                {workspace.taskCount}
+                                            </span>
+                                        ) : null}
+                                        {item.href === "/ai-assistant" ? (
+                                            <span className="rounded-full bg-accent/10 px-1.5 text-[9px] font-bold uppercase tracking-wide text-accent">
+                                                {t("newBadge")}
+                                            </span>
+                                        ) : null}
+                                    </Link>
+                                );
+                            })}
                     </nav>
 
                     <div className="mt-5 flex items-center justify-between px-2">

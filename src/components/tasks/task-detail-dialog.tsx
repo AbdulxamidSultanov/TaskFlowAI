@@ -1,4 +1,5 @@
 "use client";
+import { TaskWorkflowPanel } from "./task-workflow-panel";
 import { Attachments } from "./attachments";
 import { TaskExtras } from "./task-extras";
 
@@ -51,16 +52,26 @@ export function TaskDetailDialog({
     const tPriority = useTranslations("priority");
     const locale = useLocale();
     const toast = useToast();
-    const { workspace, canEdit } = useWorkspace();
+    const { workspace } = useWorkspace();
 
-    const { data: task, isLoading } = useGetTaskQuery(
+    const {
+        data: task,
+        isLoading,
+        isError,
+        refetch,
+    } = useGetTaskQuery(
         { id: taskId ?? "" },
-        { skip: !open || !taskId },
+        {
+            skip: !open || !taskId,
+            pollingInterval: 30000,
+            refetchOnFocus: true,
+        },
     );
     const { data: members } = useGetWorkspaceMembersQuery(
         { workspaceId: workspace.id },
         { skip: !open },
     );
+    const canEdit = task?.permissions?.edit ?? false;
     const [updateTask, updateState] = useUpdateTaskMutation();
     const [addComment, commentState] = useAddTaskCommentMutation();
     const [deleteTask, deleteState] = useDeleteTaskMutation();
@@ -111,22 +122,25 @@ export function TaskDetailDialog({
             <Modal
                 open={open}
                 onClose={onClose}
-                title={task?.title ?? t("loading")}
+                title={
+                    isError ? t("unavailable") : (task?.title ?? t("loading"))
+                }
                 description={
-                    task
+                    task && !isError
                         ? `${task.project.name} · ${task.project.key}`
                         : undefined
                 }
                 size="lg"
                 closeLabel={tCommon("close")}
                 footer={
-                    task ? (
+                    task && !isError ? (
                         <>
                             {canEdit ? (
                                 <>
                                     <Button
                                         variant="danger"
                                         size="sm"
+                                        disabled={!task.permissions?.delete}
                                         onClick={() => setConfirmDelete(true)}
                                     >
                                         <Trash2 size={15} />
@@ -151,7 +165,17 @@ export function TaskDetailDialog({
                     ) : null
                 }
             >
-                {isLoading || !task ? (
+                {isError ? (
+                    <div role="alert" className="space-y-3 p-4 text-sm">
+                        <p>{t("unavailable")}</p>
+                        <Button
+                            variant="outline"
+                            onClick={() => void refetch()}
+                        >
+                            {t("retry")}
+                        </Button>
+                    </div>
+                ) : isLoading || !task ? (
                     <PageLoader label={t("loading")} />
                 ) : (
                     <div className="space-y-5">
@@ -243,7 +267,14 @@ export function TaskDetailDialog({
                                     <Select
                                         className="mt-1"
                                         value={task.status}
-                                        disabled={updateState.isLoading}
+                                        disabled={
+                                            updateState.isLoading ||
+                                            !task.permissions?.status ||
+                                            [
+                                                "blocked",
+                                                "under_review",
+                                            ].includes(task.status)
+                                        }
                                         onChange={(event) =>
                                             void quickUpdate({
                                                 status: event.target
@@ -251,11 +282,29 @@ export function TaskDetailDialog({
                                             })
                                         }
                                     >
-                                        {taskStatuses.map((status) => (
-                                            <option key={status} value={status}>
-                                                {tStatus(status)}
-                                            </option>
-                                        ))}
+                                        {taskStatuses
+                                            .filter(
+                                                (status) =>
+                                                    (![
+                                                        "blocked",
+                                                        "under_review",
+                                                        "cancelled",
+                                                    ].includes(status) &&
+                                                        !(
+                                                            task.requiresReview &&
+                                                            status ===
+                                                                "completed"
+                                                        )) ||
+                                                    status === task.status,
+                                            )
+                                            .map((status) => (
+                                                <option
+                                                    key={status}
+                                                    value={status}
+                                                >
+                                                    {tStatus(status)}
+                                                </option>
+                                            ))}
                                     </Select>
                                 </label>
                                 <label className="text-xs font-medium text-text-secondary">
@@ -263,7 +312,10 @@ export function TaskDetailDialog({
                                     <Select
                                         className="mt-1"
                                         value={task.assigneeId ?? ""}
-                                        disabled={updateState.isLoading}
+                                        disabled={
+                                            updateState.isLoading ||
+                                            !task.permissions?.assign
+                                        }
                                         onChange={(event) =>
                                             void quickUpdate({
                                                 assigneeId:
@@ -287,11 +339,16 @@ export function TaskDetailDialog({
                             </div>
                         ) : null}
 
+                        <TaskWorkflowPanel task={task} />
                         <TaskExtras
                             taskId={task.id}
                             archivedAt={task.archivedAt}
+                            permissions={task.permissions}
                         />
-                        <Attachments taskId={task.id} />
+                        <Attachments
+                            taskId={task.id}
+                            permissions={task.permissions}
+                        />
                         <div>
                             <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-text-primary">
                                 <MessageSquare size={16} />
@@ -338,7 +395,7 @@ export function TaskDetailDialog({
                                 )}
                             </div>
 
-                            {canEdit ? (
+                            {task.permissions?.comment ? (
                                 <div className="mt-3 flex items-end gap-2">
                                     <Textarea
                                         value={comment}

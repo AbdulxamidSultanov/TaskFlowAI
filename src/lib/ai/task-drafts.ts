@@ -142,7 +142,7 @@ async function buildContext(
             name: users.name,
             role: users.role,
             departmentId: users.departmentId,
-            allocatedMinutes: sql<number>`(select coalesce(sum(estimate_minutes),0) from tasks where assignee_id=${users.id} and workspace_id=${workspaceId} and status!='completed' and archived_at is null)`,
+            allocatedMinutes: sql<number>`(select coalesce(sum(estimate_minutes),0) from tasks where assignee_id=${users.id} and workspace_id=${workspaceId} and status not in ('completed','cancelled') and archived_at is null)`,
         })
         .from(workspaceMembers)
         .innerJoin(users, eq(users.id, workspaceMembers.userId))

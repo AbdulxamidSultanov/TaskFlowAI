@@ -135,3 +135,10 @@ The **Time management** section provides a persistent timer, manual work entries
 Task reminders apply to every assignee, with default thresholds of 24/5/1 hours, upcoming starts and overdue alerts. `npm run dev` and `npm run start` run the web app plus a separate one-minute reminder worker. Notifications are in-app; email/push providers are not configured. Production requires `AUTH_SECRET` (at least 32 characters). Long-lived production workers and shared durable file storage must be provisioned separately for serverless deployments.
 
 Behavior, permissions, endpoints and limitations: [docs/time-management.md](docs/time-management.md).
+
+## My day and supervisor workflow
+
+The personal home is now **My day** (`/dashboard`); the previous dashboard remains under **Overview** (`/overview`). **Team control** provides scoped review/block/overdue queues. Task-specific viewer/contributor grants enable cross-department collaboration without opening the whole project. Details, the permission matrix, migration and worker behavior: [docs/my-day-and-task-access.md](docs/my-day-and-task-access.md).
+
+Test logins for all 26 employees: [docs/test-accounts.md](docs/test-accounts.md).
+Local deployment and Vercel/Turso tradeoffs: [docs/deployment-testing.md](docs/deployment-testing.md).

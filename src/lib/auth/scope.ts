@@ -1,6 +1,7 @@
-import { and, eq, inArray, isNull, or, sql, type SQL } from "drizzle-orm";
+import { and, eq, inArray, isNull, or, sql, ne, type SQL } from "drizzle-orm";
 import { db } from "@/db";
 import {
+    taskParticipants,
     departments,
     projects,
     tasks,
@@ -71,6 +72,7 @@ export async function taskScope(
     user: AuthUser,
     workspaceId?: string,
     includeArchived = false,
+    includeParticipants = true,
 ): Promise<SQL> {
     const ids = workspaceId
         ? [workspaceId]
@@ -85,7 +87,20 @@ export async function taskScope(
                     ? undefined
                     : or(
                           inArray(tasks.assigneeId, scope),
-                          eq(tasks.creatorId, user.id),
+                          includeParticipants
+                              ? inArray(
+                                    tasks.id,
+                                    db
+                                        .select({ id: taskParticipants.taskId })
+                                        .from(taskParticipants)
+                                        .where(
+                                            eq(
+                                                taskParticipants.userId,
+                                                user.id,
+                                            ),
+                                        ),
+                                )
+                              : undefined,
                       ),
             )!,
         );
@@ -118,7 +133,9 @@ export async function projectScope(
                               db
                                   .select({ id: tasks.projectId })
                                   .from(tasks)
-                                  .where(await taskScope(user, id)),
+                                  .where(
+                                      await taskScope(user, id, false, false),
+                                  ),
                           ),
                       ),
             )!,
@@ -216,6 +233,7 @@ export async function assertAssignable(
                 eq(workspaceMembers.workspaceId, workspaceId),
                 eq(users.id, assigneeId),
                 eq(users.isActive, true),
+                ne(workspaceMembers.role, "viewer"),
             ),
         )
         .limit(1);

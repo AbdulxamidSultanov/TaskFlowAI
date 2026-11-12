@@ -185,6 +185,26 @@ export const tasks = sqliteTable(
             { onDelete: "set null" },
         ),
         archivedAt: integer("archived_at", { mode: "timestamp_ms" }),
+        requiresReview: integer("requires_review", { mode: "boolean" })
+            .notNull()
+            .default(false),
+        reviewerId: text("reviewer_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        submittedAt: integer("submitted_at", { mode: "timestamp_ms" }),
+        reviewedAt: integer("reviewed_at", { mode: "timestamp_ms" }),
+        reviewedById: text("reviewed_by_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        blockReason: text("block_reason"),
+        blockedAt: integer("blocked_at", { mode: "timestamp_ms" }),
+        blockedById: text("blocked_by_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        helperId: text("helper_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+
         title: text("title").notNull(),
         description: text("description"),
         status: text("status", {
@@ -195,6 +215,7 @@ export const tasks = sqliteTable(
                 "blocked",
                 "completed",
                 "queued",
+                "cancelled",
             ],
         })
             .notNull()
@@ -229,7 +250,7 @@ export const tasks = sqliteTable(
         ),
         check(
             "tasks_status_check",
-            sql`${table.status} IN ('todo','in_progress','under_review','blocked','completed','queued')`,
+            sql`${table.status} IN ('todo','in_progress','under_review','blocked','completed','queued','cancelled')`,
         ),
         check(
             "tasks_priority_check",
@@ -705,5 +726,58 @@ export const taskAttachments = sqliteTable(
     (t) => [
         index("attachments_task_idx").on(t.taskId),
         check("attachment_size_check", sql`${t.size}>=0`),
+    ],
+);
+
+export const taskParticipants = sqliteTable(
+    "task_participants",
+    {
+        id: id(),
+        taskId: text("task_id")
+            .notNull()
+            .references(() => tasks.id, { onDelete: "cascade" }),
+        userId: text("user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        role: text("role", { enum: ["viewer", "contributor"] })
+            .notNull()
+            .default("viewer"),
+        addedById: text("added_by_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        createdAt: createdAt(),
+    },
+    (t) => [
+        uniqueIndex("task_participant_unique_idx").on(t.taskId, t.userId),
+        index("task_participant_user_idx").on(t.userId, t.taskId),
+    ],
+);
+
+export const taskActionRequests = sqliteTable(
+    "task_action_requests",
+    {
+        id: id(),
+        taskId: text("task_id")
+            .notNull()
+            .references(() => tasks.id, { onDelete: "cascade" }),
+        targetUserId: text("target_user_id")
+            .notNull()
+            .references(() => users.id, { onDelete: "cascade" }),
+        requestedById: text("requested_by_id").references(() => users.id, {
+            onDelete: "set null",
+        }),
+        kind: text("kind", {
+            enum: ["review", "response", "unblock"],
+        }).notNull(),
+        reason: text("reason").notNull(),
+        createdAt: createdAt(),
+        resolvedAt: integer("resolved_at", { mode: "timestamp_ms" }),
+    },
+    (t) => [
+        index("task_action_target_idx").on(
+            t.targetUserId,
+            t.resolvedAt,
+            t.taskId,
+        ),
     ],
 );

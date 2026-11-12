@@ -1,4 +1,5 @@
 "use client";
+import type { TaskPermissions } from "@/lib/auth/task-rights";
 import { useState } from "react";
 import { useLocale, useTranslations } from "next-intl";
 import {
@@ -44,14 +45,17 @@ const api = taskflowApi.injectEndpoints({
 export function TaskExtras({
     taskId,
     archivedAt,
+    permissions,
 }: {
     taskId: string;
     archivedAt: string | null;
+    permissions?: TaskPermissions;
 }) {
     const t = useTranslations("taskExtras");
     const locale = useLocale();
     const toast = useToast();
-    const { workspace, canEdit } = useWorkspace();
+    const { workspace } = useWorkspace();
+    const canEdit = permissions?.manageDependencies ?? false;
     const { data } = api.useGetExtrasQuery(taskId);
     const { data: tasks } = useGetTasksQuery({
         workspaceId: workspace.id,
@@ -63,7 +67,7 @@ export function TaskExtras({
     const fail = (e: unknown) => toast.error(getApiErrorMessage(e, t("error")));
     return (
         <section className="space-y-3 border-t border-border pt-4">
-            {archivedAt && canEdit ? (
+            {archivedAt && permissions?.delete ? (
                 <Button
                     loading={updateState.isLoading}
                     onClick={() =>

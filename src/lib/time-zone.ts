@@ -40,3 +40,19 @@ export function dateAtHour(date: string, timeZone: string, hour = 18) {
         throw new ApiError(422, "Invalid time zone", "INVALID_TIMEZONE");
     }
 }
+
+export function userDayBounds(now: Date, timeZone: string) {
+    const day = new Intl.DateTimeFormat("en-CA", {
+        timeZone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(now);
+    const next = new Date(`${day}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    return {
+        day,
+        start: dateAtHour(day, timeZone, 0),
+        end: dateAtHour(next.toISOString().slice(0, 10), timeZone, 0),
+    };
+}

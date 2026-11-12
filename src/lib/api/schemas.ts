@@ -136,6 +136,8 @@ export const projectUpdateSchema = projectCreateSchema
     .partial();
 
 export const taskCreateSchema = z.object({
+    requiresReview: z.boolean().optional(),
+    reviewerId: id.nullable().optional(),
     workspaceId: id.optional(),
     projectId: id,
     departmentId: id.optional(),

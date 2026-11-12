@@ -43,6 +43,13 @@
       "when": 1794491346251,
       "tag": "0005_integrity_guards",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1794493817314,
+      "tag": "0006_tired_madame_masque",
+      "breakpoints": true
     }
   ]
 }

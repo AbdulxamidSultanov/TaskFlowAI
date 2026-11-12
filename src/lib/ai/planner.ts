@@ -101,6 +101,7 @@ export async function generatePlan(input: PlanInput) {
                 eq(tasks.workspaceId, input.workspaceId),
                 eq(tasks.assigneeId, input.userId),
                 ne(tasks.status, "completed"),
+                ne(tasks.status, "cancelled"),
                 ne(tasks.status, "blocked"),
                 isNull(tasks.archivedAt),
                 sql`${tasks.id} NOT IN (select d.task_id from task_dependencies d join tasks blocker on blocker.id=d.depends_on_id where blocker.status!='completed')`,

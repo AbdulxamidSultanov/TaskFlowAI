@@ -81,6 +81,7 @@ export async function POST(request: Request, { params }: Params) {
                             scope,
                             eq(tasks.workspaceId, workspaceId),
                             ne(tasks.status, "completed"),
+                            ne(tasks.status, "cancelled"),
                         ),
                     ),
                 db
@@ -92,6 +93,7 @@ export async function POST(request: Request, { params }: Params) {
                             eq(tasks.workspaceId, workspaceId),
                             lt(tasks.dueDate, now),
                             ne(tasks.status, "completed"),
+                            ne(tasks.status, "cancelled"),
                         ),
                     ),
                 db
@@ -112,6 +114,7 @@ export async function POST(request: Request, { params }: Params) {
                             scope,
                             eq(tasks.workspaceId, workspaceId),
                             ne(tasks.status, "completed"),
+                            ne(tasks.status, "cancelled"),
                         ),
                     )
                     .orderBy(asc(tasks.dueDate))

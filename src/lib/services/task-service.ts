@@ -1,3 +1,11 @@
+import { taskPermissions, requireTaskPermission } from "@/lib/auth/task-rights";
+import {
+    applyTaskWorkflow,
+    initialReviewer,
+    actionRecipient,
+} from "./task-workflow";
+import { taskActionRequests, notifications } from "@/db/schema";
+import { userDayBounds } from "@/lib/time-zone";
 import {
     and,
     asc,
@@ -53,6 +61,15 @@ const taskFields = {
     departmentId: tasks.departmentId,
     parentTaskId: tasks.parentTaskId,
     archivedAt: tasks.archivedAt,
+    requiresReview: tasks.requiresReview,
+    reviewerId: tasks.reviewerId,
+    submittedAt: tasks.submittedAt,
+    reviewedAt: tasks.reviewedAt,
+    reviewedById: tasks.reviewedById,
+    blockReason: tasks.blockReason,
+    blockedAt: tasks.blockedAt,
+    blockedById: tasks.blockedById,
+    helperId: tasks.helperId,
     title: tasks.title,
     description: tasks.description,
     status: tasks.status,
@@ -173,14 +190,15 @@ function buildTaskWhere(user: AuthUser, filters: TaskFilters) {
     const now = new Date();
     if (filters.due === "overdue") {
         conditions.push(
-            and(lt(tasks.dueDate, now), ne(tasks.status, "completed")),
+            and(
+                lt(tasks.dueDate, now),
+                ne(tasks.status, "completed"),
+                ne(tasks.status, "cancelled"),
+            ),
         );
     }
     if (filters.due === "today") {
-        const start = new Date(now);
-        start.setHours(0, 0, 0, 0);
-        const end = new Date(start);
-        end.setDate(end.getDate() + 1);
+        const { start, end } = userDayBounds(now, user.timezone);
         conditions.push(and(gte(tasks.dueDate, start), lt(tasks.dueDate, end)));
     }
     if (filters.due === "week") {
@@ -253,10 +271,13 @@ export async function listTasks(
     }
 
     return {
-        items: rows.map((row) => ({
-            ...row,
-            tags: tagsByTask.get(row.id) ?? [],
-        })),
+        items: await Promise.all(
+            rows.map(async (row) => ({
+                ...row,
+                tags: tagsByTask.get(row.id) ?? [],
+                permissions: await taskPermissions(user, row),
+            })),
+        ),
         pagination: paginationMeta(totalRows[0]?.value ?? 0, pagination),
     };
 }
@@ -265,6 +286,7 @@ export async function getTaskDetail(id: string, user?: AuthUser) {
     const [task] = await taskDetailQuery().where(eq(tasks.id, id)).limit(1);
 
     if (!task) return null;
+    if (user) await requireTaskAccess(user, id);
 
     const [taskTagRows, commentRows] = await Promise.all([
         db
@@ -293,6 +315,18 @@ export async function getTaskDetail(id: string, user?: AuthUser) {
             .orderBy(asc(comments.createdAt)),
     ]);
 
+    const [helper] = task.helperId
+        ? await db
+              .select({ id: users.id, name: users.name })
+              .from(users)
+              .where(eq(users.id, task.helperId))
+        : [];
+    const [blockedBy] = task.blockedById
+        ? await db
+              .select({ id: users.id, name: users.name })
+              .from(users)
+              .where(eq(users.id, task.blockedById))
+        : [];
     const [subtasks] = await db
         .select({ value: count() })
         .from(tasks)
@@ -304,6 +338,21 @@ export async function getTaskDetail(id: string, user?: AuthUser) {
         );
     return {
         ...task,
+        helper: helper ?? null,
+        blockedBy: blockedBy ?? null,
+        permissions: user ? await taskPermissions(user, task) : undefined,
+        actionRequests: user
+            ? await db
+                  .select()
+                  .from(taskActionRequests)
+                  .where(
+                      and(
+                          eq(taskActionRequests.taskId, id),
+                          eq(taskActionRequests.targetUserId, user.id),
+                          sql`${taskActionRequests.resolvedAt} IS NULL`,
+                      ),
+                  )
+            : [],
         subtaskCount: subtasks.value,
         tags: taskTagRows,
         comments: commentRows,
@@ -402,6 +451,22 @@ export async function createTask(
     raw: z.infer<typeof taskCreateSchema>,
 ) {
     const input = taskCreateSchema.parse(raw);
+    if (
+        input.status &&
+        ["blocked", "under_review", "cancelled"].includes(input.status)
+    )
+        throw new ApiError(
+            422,
+            "Use the task workflow to set this status",
+            "WORKFLOW_ACTION_REQUIRED",
+        );
+    if (input.requiresReview && input.status === "completed")
+        throw new ApiError(
+            422,
+            "Submit the result for review first",
+            "REVIEW_REQUIRED",
+        );
+    input.assigneeId ??= user.id;
     const project = await requireProjectAccess(user, input.projectId, true);
     if (input.workspaceId && input.workspaceId !== project.workspaceId)
         throw new ApiError(400, "Invalid workspace", "INVALID_RELATION");
@@ -411,6 +476,13 @@ export async function createTask(
     const startDate = input.startDate ? new Date(input.startDate) : null;
     const dueDate = input.dueDate ? new Date(input.dueDate) : null;
     assertDates(startDate, dueDate);
+    const reviewerId = input.requiresReview
+        ? await initialReviewer(
+              project.workspaceId,
+              input.assigneeId,
+              input.reviewerId,
+          )
+        : null;
     const id = await db.transaction(async (tx) => {
         const { tagIds } = await validateRelations(
             tx,
@@ -427,6 +499,7 @@ export async function createTask(
                 projectId: project.id,
                 departmentId: project.departmentId,
                 creatorId: user.id,
+                reviewerId,
                 startDate,
                 dueDate,
                 completedAt: status === "completed" ? new Date() : null,
@@ -451,7 +524,127 @@ export async function updateTask(
     raw: z.infer<typeof taskUpdateSchema>,
 ) {
     const input = taskUpdateSchema.parse(raw);
-    const existing = await requireTaskAccess(user, taskId, true);
+    const { task: existing, permissions } = await requireTaskPermission(
+        user,
+        taskId,
+        "view",
+    );
+    const needs = (key: keyof typeof permissions) => {
+        if (!permissions[key])
+            throw new ApiError(
+                403,
+                "This task action is not permitted",
+                "FORBIDDEN",
+            );
+    };
+    for (const key of Object.keys(input)) {
+        if (
+            [
+                "assigneeId",
+                "projectId",
+                "departmentId",
+                "parentTaskId",
+            ].includes(key)
+        )
+            needs("assign");
+        else if (["dueDate", "startDate"].includes(key))
+            needs("changeDeadline");
+        else if (["requiresReview", "reviewerId"].includes(key))
+            needs("manageParticipants");
+        else if (key === "archived") needs("delete");
+        else if (key === "status") needs("status");
+        else needs("edit");
+    }
+    if (
+        input.status &&
+        (input.status === "blocked" ||
+            input.status === "under_review" ||
+            input.status === "cancelled" ||
+            (input.status === "completed" &&
+                (input.requiresReview ?? existing.requiresReview)) ||
+            existing.status === "blocked" ||
+            existing.status === "under_review")
+    ) {
+        if (Object.keys(input).some((k) => k !== "status"))
+            throw new ApiError(
+                422,
+                "Submit workflow actions separately",
+                "WORKFLOW_ACTION_REQUIRED",
+            );
+        if (input.status === "blocked")
+            throw new ApiError(
+                422,
+                "A block reason and helper are required",
+                "REASON_REQUIRED",
+            );
+        const action =
+            input.status === "cancelled"
+                ? "cancel"
+                : existing.status === "blocked" &&
+                    input.status === "in_progress"
+                  ? "unblock"
+                  : input.status === "under_review" ||
+                      input.status === "completed"
+                    ? permissions.review && existing.status === "under_review"
+                        ? "accept"
+                        : "submit"
+                    : null;
+        if (!action)
+            throw new ApiError(
+                422,
+                "Use the review or unblock action",
+                "WORKFLOW_ACTION_REQUIRED",
+            );
+        await applyTaskWorkflow(user, taskId, { action });
+        return getTaskDetail(taskId, user);
+    }
+    if (
+        existing.status === "under_review" &&
+        ((input.assigneeId !== undefined &&
+            input.assigneeId !== existing.assigneeId) ||
+            (input.reviewerId !== undefined &&
+                input.reviewerId !== existing.reviewerId))
+    )
+        throw new ApiError(
+            409,
+            "Return the task for rework before changing its assignee or reviewer",
+            "REVIEW_PENDING",
+        );
+    if (
+        input.assigneeId &&
+        input.assigneeId === existing.reviewerId &&
+        !input.reviewerId
+    )
+        throw new ApiError(
+            422,
+            "Choose a different reviewer before reassigning the task",
+            "INVALID_REVIEWER",
+        );
+    if (input.reviewerId) {
+        if (input.reviewerId === (input.assigneeId ?? existing.assigneeId))
+            throw new ApiError(
+                422,
+                "Assignee cannot review own work",
+                "INVALID_REVIEWER",
+            );
+        await actionRecipient(input.reviewerId, taskId, "comment");
+    }
+    if (input.requiresReview === false && existing.status === "under_review")
+        throw new ApiError(
+            409,
+            "Finish the pending review first",
+            "REVIEW_PENDING",
+        );
+    if (
+        input.requiresReview === true &&
+        !input.reviewerId &&
+        !existing.reviewerId
+    )
+        input.reviewerId = await initialReviewer(
+            existing.workspaceId,
+            input.assigneeId ?? existing.assigneeId,
+        );
+
     if (input.projectId)
         await requireProjectAccess(user, input.projectId, true);
     if (input.assigneeId)
@@ -476,7 +669,11 @@ export async function updateTask(
                 .from(taskDependencies)
                 .innerJoin(tasks, eq(tasks.id, taskDependencies.dependsOnId))
                 .where(eq(taskDependencies.taskId, taskId));
-            if (dependencies.some((row) => row.status !== "completed"))
+            if (
+                dependencies.some(
+                    (row) => !["completed", "cancelled"].includes(row.status),
+                )
+            )
                 throw new ApiError(
                     409,
                     "Complete blocking dependencies first",
@@ -527,7 +724,7 @@ export async function updateTask(
                     .insert(taskTags)
                     .values(tagIds.map((tagId) => ({ taskId, tagId })));
         }
-        if (status === "completed" || archived === true) {
+        if (["completed", "cancelled"].includes(status) || archived === true) {
             const running = await tx
                 .select()
                 .from(timeEntries)
@@ -558,6 +755,21 @@ export async function updateTask(
                       : "restored",
             changes: JSON.stringify(input),
         });
+        if (
+            input.dueDate !== undefined ||
+            input.assigneeId !== undefined ||
+            input.archived ||
+            ["completed", "cancelled"].includes(updated.status)
+        )
+            await tx
+                .delete(notifications)
+                .where(
+                    and(
+                        eq(notifications.entityId, taskId),
+                        eq(notifications.type, "task_due"),
+                        sql`${notifications.readAt} IS NULL`,
+                    ),
+                );
         if (updated.assigneeId && updated.assigneeId !== current.assigneeId)
             await notifyAssignment(tx, updated);
     });
@@ -569,7 +781,7 @@ export async function deleteTask(user: AuthUser, taskId: string) {
 }
 
 export async function addComment(user: AuthUser, taskId: string, body: string) {
-    await requireTaskAccess(user, taskId, true);
+    await requireTaskPermission(user, taskId, "comment");
     const [comment] = await db
         .insert(comments)
         .values({ taskId, authorId: user.id, body })
