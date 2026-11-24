@@ -1,6 +1,6 @@
 import { and, eq, inArray, isNull } from "drizzle-orm";
 import { z } from "zod";
-import { db } from "@/db";
+import { db, type DbReader, type DbTransaction } from "@/db";
 import {
     notifications,
     comments,
@@ -33,8 +33,8 @@ export const workflowInput = z.object({
     targetUserId: z.string().nullable().optional(),
     requestId: z.string().optional(),
 });
-export async function actorFor(id: string): Promise<AuthUser | null> {
-    const [user] = await db
+export async function actorFor(id: string, store: DbReader = db): Promise<AuthUser | null> {
+    const [user] = await store
         .select()
         .from(users)
         .where(and(eq(users.id, id), eq(users.isActive, true)));
@@ -43,9 +43,10 @@ export async function actorFor(id: string): Promise<AuthUser | null> {
 export async function defaultSupervisor(
     workspaceId: string,
     userId: string | null,
+    store: DbReader = db,
 ) {
     const [member] = userId
-        ? await db
+        ? await store
               .select()
               .from(workspaceMembers)
               .where(
@@ -56,7 +57,7 @@ export async function defaultSupervisor(
               )
         : [];
     if (member?.managerUserId) return member.managerUserId;
-    const [workspace] = await db
+    const [workspace] = await store
         .select()
         .from(workspaces)
         .where(eq(workspaces.id, workspaceId));
@@ -66,16 +67,17 @@ export async function initialReviewer(
     workspaceId: string,
     assigneeId: string | null,
     requested?: string | null,
+    store: DbReader = db,
 ) {
     const target =
-        requested ?? (await defaultSupervisor(workspaceId, assigneeId));
+        requested ?? (await defaultSupervisor(workspaceId, assigneeId, store));
     if (!target || target === assigneeId)
         throw new ApiError(
             422,
             "Choose a different reviewer with task access",
             "REVIEWER_REQUIRED",
         );
-    const members = await db
+    const members = await store
         .select()
         .from(workspaceMembers)
         .where(eq(workspaceMembers.workspaceId, workspaceId));
@@ -101,14 +103,16 @@ export async function actionRecipient(
     userId: string,
     taskId: string,
     action: "view" | "comment" | "review" = "view",
+    store: DbReader = db,
 ) {
-    const actor = await actorFor(userId);
+    const actor = await actorFor(userId, store);
     if (!actor)
         throw new ApiError(422, "Recipient is inactive", "INVALID_RECIPIENT");
     const { task, permissions } = await requireTaskPermission(
         actor,
         taskId,
         action,
+        store,
     );
     return { actor, task, permissions };
 }
@@ -117,9 +121,20 @@ export async function applyTaskWorkflow(
     id: string,
     raw: unknown,
 ) {
+    return db.transaction((tx) =>
+        applyTaskWorkflowInTransaction(tx, user, id, raw),
+    );
+}
+
+export async function applyTaskWorkflowInTransaction(
+    tx: DbTransaction,
+    user: AuthUser,
+    id: string,
+    raw: unknown,
+) {
     const input = workflowInput.parse(raw);
-    const task = await requireTaskAccess(user, id);
-    const rights = await taskPermissions(user, task);
+    const task = await requireTaskAccess(user, id, false, tx);
+    const rights = await taskPermissions(user, task, tx);
     if (task.archivedAt || ["completed", "cancelled"].includes(task.status))
         throw new ApiError(
             409,
@@ -141,14 +156,14 @@ export async function applyTaskWorkflow(
         if (task.requiresReview) {
             target =
                 task.reviewerId ??
-                (await defaultSupervisor(task.workspaceId, task.assigneeId));
+                (await defaultSupervisor(task.workspaceId, task.assigneeId, tx));
             if (!target)
                 throw new ApiError(
                     422,
                     "Reviewer required",
                     "REVIEWER_REQUIRED",
                 );
-            await actionRecipient(target, id, "review");
+            await actionRecipient(target, id, "review", tx);
         }
     } else if (input.action === "accept" || input.action === "rework") {
         if (!rights.review) forbidden();
@@ -168,12 +183,12 @@ export async function applyTaskWorkflow(
             );
         target =
             input.targetUserId ??
-            (await defaultSupervisor(task.workspaceId, task.assigneeId));
+            (await defaultSupervisor(task.workspaceId, task.assigneeId, tx));
         if (input.targetUserId)
-            await actionRecipient(input.targetUserId, id, "comment");
+            await actionRecipient(input.targetUserId, id, "comment", tx);
         else if (target) {
             try {
-                await actionRecipient(target, id, "comment");
+                await actionRecipient(target, id, "comment", tx);
             } catch {
                 target = null;
             }
@@ -190,10 +205,10 @@ export async function applyTaskWorkflow(
         if (!rights.comment) forbidden();
         target =
             input.targetUserId ??
-            (await defaultSupervisor(task.workspaceId, task.assigneeId));
+            (await defaultSupervisor(task.workspaceId, task.assigneeId, tx));
         if (!target)
             throw new ApiError(422, "Recipient required", "RECIPIENT_REQUIRED");
-        await actionRecipient(target, id, "comment");
+        await actionRecipient(target, id, "comment", tx);
     } else if (input.action === "resolve") {
         if (!rights.comment) forbidden();
         if (!input.requestId)
@@ -210,190 +225,181 @@ export async function applyTaskWorkflow(
             "An explanation of at least 3 characters is required",
             "REASON_REQUIRED",
         );
-    await db.transaction(async (tx) => {
-        const [current] = await tx.select().from(tasks).where(eq(tasks.id, id));
-        if (current.updatedAt.getTime() !== task.updatedAt.getTime())
+    const patch: Partial<typeof tasks.$inferInsert> = {
+        updatedAt: new Date(),
+    };
+    const closeKinds = (kinds: Array<"review" | "response" | "unblock">) =>
+        tx
+            .update(taskActionRequests)
+            .set({ resolvedAt: new Date() })
+            .where(
+                and(
+                    eq(taskActionRequests.taskId, id),
+                    inArray(taskActionRequests.kind, kinds),
+                    isNull(taskActionRequests.resolvedAt),
+                ),
+            );
+    if (input.action === "submit" || input.action === "accept") {
+        const deps = await tx
+            .select({ status: tasks.status })
+            .from(taskDependencies)
+            .innerJoin(tasks, eq(tasks.id, taskDependencies.dependsOnId))
+            .where(eq(taskDependencies.taskId, id));
+        if (
+            deps.some((d) => !["completed", "cancelled"].includes(d.status))
+        )
             throw new ApiError(
                 409,
-                "Task changed; refresh and retry",
-                "TASK_CHANGED",
+                "Blocking dependencies are incomplete",
+                "TASK_BLOCKED",
             );
-        const patch: Partial<typeof tasks.$inferInsert> = {
-            updatedAt: new Date(),
-        };
-        const closeKinds = (kinds: Array<"review" | "response" | "unblock">) =>
-            tx
-                .update(taskActionRequests)
-                .set({ resolvedAt: new Date() })
-                .where(
-                    and(
-                        eq(taskActionRequests.taskId, id),
-                        inArray(taskActionRequests.kind, kinds),
-                        isNull(taskActionRequests.resolvedAt),
-                    ),
-                );
-        if (input.action === "submit" || input.action === "accept") {
-            const deps = await tx
-                .select({ status: tasks.status })
-                .from(taskDependencies)
-                .innerJoin(tasks, eq(tasks.id, taskDependencies.dependsOnId))
-                .where(eq(taskDependencies.taskId, id));
-            if (
-                deps.some((d) => !["completed", "cancelled"].includes(d.status))
-            )
-                throw new ApiError(
-                    409,
-                    "Blocking dependencies are incomplete",
-                    "TASK_BLOCKED",
-                );
-        }
-        if (input.action === "submit") {
-            patch.status = task.requiresReview ? "under_review" : "completed";
-            patch.submittedAt = new Date();
-            patch.completedAt = task.requiresReview ? null : new Date();
-            patch.reviewerId = target ?? task.reviewerId;
-            await closeKinds(["review"]);
-            if (target)
-                await tx
-                    .insert(taskActionRequests)
-                    .values({
-                        taskId: id,
-                        targetUserId: target,
-                        requestedById: user.id,
-                        kind: "review",
-                        reason: input.reason ?? "",
-                    });
-        } else if (input.action === "accept") {
-            patch.status = "completed";
-            patch.completedAt = new Date();
-            patch.reviewedAt = new Date();
-            patch.reviewedById = user.id;
-            await closeKinds(["review", "response", "unblock"]);
-        } else if (input.action === "rework") {
-            patch.status = "in_progress";
-            patch.submittedAt = null;
-            patch.reviewedAt = null;
-            patch.reviewedById = null;
-            await closeKinds(["review"]);
-            await tx
-                .insert(comments)
-                .values({ taskId: id, authorId: user.id, body: input.reason! });
-        } else if (input.action === "block") {
-            patch.status = "blocked";
-            patch.blockReason = input.reason!;
-            patch.blockedAt = new Date();
-            patch.blockedById = user.id;
-            patch.helperId = target;
-            await closeKinds(["review", "unblock"]);
-            if (target)
-                await tx
-                    .insert(taskActionRequests)
-                    .values({
-                        taskId: id,
-                        targetUserId: target,
-                        requestedById: user.id,
-                        kind: "unblock",
-                        reason: input.reason!,
-                    });
-        } else if (input.action === "unblock") {
-            patch.status = "in_progress";
-            patch.blockReason = null;
-            patch.blockedAt = null;
-            patch.blockedById = null;
-            patch.helperId = null;
-            await closeKinds(["unblock"]);
-        } else if (input.action === "request") {
+    }
+    if (input.action === "submit") {
+        patch.status = task.requiresReview ? "under_review" : "completed";
+        patch.submittedAt = new Date();
+        patch.completedAt = task.requiresReview ? null : new Date();
+        patch.reviewerId = target ?? task.reviewerId;
+        await closeKinds(["review"]);
+        if (target)
             await tx
                 .insert(taskActionRequests)
                 .values({
                     taskId: id,
-                    targetUserId: target!,
+                    targetUserId: target,
                     requestedById: user.id,
-                    kind: "response",
+                    kind: "review",
+                    reason: input.reason ?? "",
+                });
+    } else if (input.action === "accept") {
+        patch.status = "completed";
+        patch.completedAt = new Date();
+        patch.reviewedAt = new Date();
+        patch.reviewedById = user.id;
+        await closeKinds(["review", "response", "unblock"]);
+    } else if (input.action === "rework") {
+        patch.status = "in_progress";
+        patch.submittedAt = null;
+        patch.reviewedAt = null;
+        patch.reviewedById = null;
+        await closeKinds(["review"]);
+        await tx
+            .insert(comments)
+            .values({ taskId: id, authorId: user.id, body: input.reason! });
+    } else if (input.action === "block") {
+        patch.status = "blocked";
+        patch.blockReason = input.reason!;
+        patch.blockedAt = new Date();
+        patch.blockedById = user.id;
+        patch.helperId = target;
+        await closeKinds(["review", "unblock"]);
+        if (target)
+            await tx
+                .insert(taskActionRequests)
+                .values({
+                    taskId: id,
+                    targetUserId: target,
+                    requestedById: user.id,
+                    kind: "unblock",
                     reason: input.reason!,
                 });
-        } else if (input.action === "resolve") {
-            const [request] = await tx
-                .select()
-                .from(taskActionRequests)
-                .where(
-                    and(
-                        eq(taskActionRequests.id, input.requestId!),
-                        eq(taskActionRequests.taskId, id),
-                        eq(taskActionRequests.targetUserId, user.id),
-                        isNull(taskActionRequests.resolvedAt),
-                    ),
-                );
-            if (!request)
-                throw new ApiError(
-                    404,
-                    "Action request not found",
-                    "NOT_FOUND",
-                );
-            if (request.kind !== "response")
-                throw new ApiError(
-                    422,
-                    "Use the review or unblock action",
-                    "WORKFLOW_ACTION_REQUIRED",
-                );
-            if (!input.reason || input.reason.length < 3)
-                throw new ApiError(
-                    422,
-                    "A response is required",
-                    "REASON_REQUIRED",
-                );
-            await tx
-                .insert(comments)
-                .values({ taskId: id, authorId: user.id, body: input.reason });
-            await tx
-                .update(taskActionRequests)
-                .set({ resolvedAt: new Date() })
-                .where(eq(taskActionRequests.id, request.id));
-        } else if (input.action === "cancel") {
-            patch.status = "cancelled";
-            patch.completedAt = null;
-            await closeKinds(["review", "response", "unblock"]);
-        }
-        await tx.update(tasks).set(patch).where(eq(tasks.id, id));
-        if (["submit", "accept", "cancel"].includes(input.action))
-            await tx
-                .delete(notifications)
-                .where(
-                    and(
-                        eq(notifications.entityId, id),
-                        eq(notifications.type, "task_due"),
-                        isNull(notifications.readAt),
-                    ),
-                );
-        if (["submit", "accept", "cancel", "block"].includes(input.action)) {
-            const running = await tx
-                .select()
-                .from(timeEntries)
-                .where(
-                    and(eq(timeEntries.taskId, id), isNull(timeEntries.endAt)),
-                );
-            for (const entry of running)
-                await tx
-                    .update(timeEntries)
-                    .set({
-                        endAt: new Date(
-                            Math.max(Date.now(), entry.startAt.getTime() + 1),
-                        ),
-                    })
-                    .where(eq(timeEntries.id, entry.id));
-        }
+    } else if (input.action === "unblock") {
+        patch.status = "in_progress";
+        patch.blockReason = null;
+        patch.blockedAt = null;
+        patch.blockedById = null;
+        patch.helperId = null;
+        await closeKinds(["unblock"]);
+    } else if (input.action === "request") {
         await tx
-            .insert(taskActivity)
+            .insert(taskActionRequests)
             .values({
                 taskId: id,
-                actorId: user.id,
-                action: `workflow.${input.action}`,
-                changes: JSON.stringify({
-                    reason: input.reason,
-                    targetUserId: target,
-                    requestId: input.requestId,
-                }),
+                targetUserId: target!,
+                requestedById: user.id,
+                kind: "response",
+                reason: input.reason!,
             });
-    });
+    } else if (input.action === "resolve") {
+        const [request] = await tx
+            .select()
+            .from(taskActionRequests)
+            .where(
+                and(
+                    eq(taskActionRequests.id, input.requestId!),
+                    eq(taskActionRequests.taskId, id),
+                    eq(taskActionRequests.targetUserId, user.id),
+                    isNull(taskActionRequests.resolvedAt),
+                ),
+            );
+        if (!request)
+            throw new ApiError(
+                404,
+                "Action request not found",
+                "NOT_FOUND",
+            );
+        if (request.kind !== "response")
+            throw new ApiError(
+                422,
+                "Use the review or unblock action",
+                "WORKFLOW_ACTION_REQUIRED",
+            );
+        if (!input.reason || input.reason.length < 3)
+            throw new ApiError(
+                422,
+                "A response is required",
+                "REASON_REQUIRED",
+            );
+        await tx
+            .insert(comments)
+            .values({ taskId: id, authorId: user.id, body: input.reason });
+        await tx
+            .update(taskActionRequests)
+            .set({ resolvedAt: new Date() })
+            .where(eq(taskActionRequests.id, request.id));
+    } else if (input.action === "cancel") {
+        patch.status = "cancelled";
+        patch.completedAt = null;
+        await closeKinds(["review", "response", "unblock"]);
+    }
+    await tx.update(tasks).set(patch).where(eq(tasks.id, id));
+    if (["submit", "accept", "cancel"].includes(input.action))
+        await tx
+            .delete(notifications)
+            .where(
+                and(
+                    eq(notifications.entityId, id),
+                    eq(notifications.type, "task_due"),
+                    isNull(notifications.readAt),
+                ),
+            );
+    if (["submit", "accept", "cancel", "block"].includes(input.action)) {
+        const running = await tx
+            .select()
+            .from(timeEntries)
+            .where(
+                and(eq(timeEntries.taskId, id), isNull(timeEntries.endAt)),
+            );
+        for (const entry of running)
+            await tx
+                .update(timeEntries)
+                .set({
+                    endAt: new Date(
+                        Math.max(Date.now(), entry.startAt.getTime() + 1),
+                    ),
+                })
+                .where(eq(timeEntries.id, entry.id));
+    }
+    await tx
+        .insert(taskActivity)
+        .values({
+            taskId: id,
+            actorId: user.id,
+            action: `workflow.${input.action}`,
+            changes: JSON.stringify({
+                reason: input.reason,
+                targetUserId: target,
+                requestId: input.requestId,
+            }),
+        });
     return { updated: true };
 }

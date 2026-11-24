@@ -1,5 +1,5 @@
 import { and, eq, inArray, isNull, or, sql, ne, type SQL } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type DbReader } from "@/db";
 import {
     taskParticipants,
     departments,
@@ -15,15 +15,16 @@ import type { AuthUser } from "./session";
 export async function workspaceScope(
     user: AuthUser,
     workspaceId: string,
+    store: DbReader = db,
 ): Promise<string[] | null> {
-    const membership = await requireWorkspaceMember(user, workspaceId, [
-        "owner",
-        "admin",
-        "member",
-        "viewer",
-    ]);
+    const membership = await requireWorkspaceMember(
+        user,
+        workspaceId,
+        ["owner", "admin", "member", "viewer"],
+        store,
+    );
     if (membership.role === "owner" || membership.role === "admin") return null;
-    const rows = await db
+    const rows = await store
         .select()
         .from(workspaceMembers)
         .where(eq(workspaceMembers.workspaceId, workspaceId));
@@ -73,13 +74,14 @@ export async function taskScope(
     workspaceId?: string,
     includeArchived = false,
     includeParticipants = true,
+    store: DbReader = db,
 ): Promise<SQL> {
     const ids = workspaceId
         ? [workspaceId]
-        : await getAccessibleWorkspaceIds(user);
+        : await getAccessibleWorkspaceIds(user, store);
     const branches: SQL[] = [];
     for (const id of ids) {
-        const scope = await workspaceScope(user, id);
+        const scope = await workspaceScope(user, id, store);
         branches.push(
             and(
                 eq(tasks.workspaceId, id),
@@ -90,7 +92,7 @@ export async function taskScope(
                           includeParticipants
                               ? inArray(
                                     tasks.id,
-                                    db
+                                    store
                                         .select({ id: taskParticipants.taskId })
                                         .from(taskParticipants)
                                         .where(
@@ -114,13 +116,14 @@ export async function taskScope(
 export async function projectScope(
     user: AuthUser,
     workspaceId?: string,
+    store: DbReader = db,
 ): Promise<SQL> {
     const ids = workspaceId
         ? [workspaceId]
-        : await getAccessibleWorkspaceIds(user);
+        : await getAccessibleWorkspaceIds(user, store);
     const branches: SQL[] = [];
     for (const id of ids) {
-        const scope = await workspaceScope(user, id);
+        const scope = await workspaceScope(user, id, store);
         branches.push(
             and(
                 eq(projects.workspaceId, id),
@@ -130,11 +133,11 @@ export async function projectScope(
                           inArray(projects.ownerId, scope),
                           inArray(
                               projects.id,
-                              db
+                              store
                                   .select({ id: tasks.projectId })
                                   .from(tasks)
                                   .where(
-                                      await taskScope(user, id, false, false),
+                                      await taskScope(user, id, false, false, store),
                                   ),
                           ),
                       ),
@@ -168,12 +171,16 @@ export async function requireTaskAccess(
     user: AuthUser,
     taskId: string,
     write = false,
+    store: DbReader = db,
 ) {
-    const [task] = await db
+    const [task] = await store
         .select()
         .from(tasks)
         .where(
-            and(eq(tasks.id, taskId), await taskScope(user, undefined, true)),
+            and(
+                eq(tasks.id, taskId),
+                await taskScope(user, undefined, true, true, store),
+            ),
         )
         .limit(1);
     if (!task)
@@ -188,6 +195,7 @@ export async function requireTaskAccess(
         write
             ? ["owner", "admin", "member"]
             : ["owner", "admin", "member", "viewer"],
+        store,
     );
     return task;
 }
@@ -196,11 +204,17 @@ export async function requireProjectAccess(
     user: AuthUser,
     projectId: string,
     write = false,
+    store: DbReader = db,
 ) {
-    const [project] = await db
+    const [project] = await store
         .select()
         .from(projects)
-        .where(and(eq(projects.id, projectId), await projectScope(user)))
+        .where(
+            and(
+                eq(projects.id, projectId),
+                await projectScope(user, undefined, store),
+            ),
+        )
         .limit(1);
     if (!project)
         throw new ApiError(
@@ -214,6 +228,7 @@ export async function requireProjectAccess(
         write
             ? ["owner", "admin", "member"]
             : ["owner", "admin", "member", "viewer"],
+        store,
     );
     return project;
 }
@@ -222,9 +237,10 @@ export async function assertAssignable(
     user: AuthUser,
     workspaceId: string,
     assigneeId: string,
+    store: DbReader = db,
 ) {
-    const scope = await workspaceScope(user, workspaceId);
-    const [row] = await db
+    const scope = await workspaceScope(user, workspaceId, store);
+    const [row] = await store
         .select({ id: users.id })
         .from(workspaceMembers)
         .innerJoin(users, eq(users.id, workspaceMembers.userId))
