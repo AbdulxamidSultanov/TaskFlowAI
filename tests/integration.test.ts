@@ -50,7 +50,13 @@ before(async () => {
 });
 after(() => {
     database?.client.close();
-    rmSync(dir, { recursive: true, force: true });
+    try {
+        rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+    } catch (error) {
+        // libSQL may keep the temporary SQLite file locked until process exit on Windows.
+        if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM")
+            throw error;
+    }
 });
 const pagination = { page: 1, pageSize: 100, limit: 100, offset: 0 };
 async function countTasks() {
@@ -1029,4 +1035,83 @@ test("changing the deadline replaces pending reminders; cancelled tasks stop the
         employee.id,
     );
     assert.equal((await pending()).length, 0);
+});
+
+test("ownership transfer preserves the sole owner, including on self-transfer", async () => {
+    const { transferOwnership } = await import("../src/lib/services/organization");
+    const { db } = database;
+    const { workspaces, workspaceMembers } = schema;
+    const [workspace] = await db.insert(workspaces).values({
+        name: "Ownership test",
+        slug: "ownership-test",
+        ownerId: admin.id,
+    }).returning();
+    await db.insert(workspaceMembers).values([
+        { workspaceId: workspace.id, userId: admin.id, role: "owner" },
+        { workspaceId: workspace.id, userId: manager.id },
+        { workspaceId: workspace.id, userId: employee.id },
+    ]);
+
+    await transferOwnership(admin, workspace.id, admin.id);
+    const listOwners = () => db.select().from(workspaceMembers).where(and(
+        eq(workspaceMembers.workspaceId, workspace.id),
+        eq(workspaceMembers.role, "owner"),
+    ));
+    const [self] = await listOwners();
+    assert.equal(self?.userId, admin.id);
+    assert.equal(self?.managerUserId, null);
+
+    await transferOwnership(admin, workspace.id, manager.id);
+    await assert.rejects(
+        transferOwnership(admin, workspace.id, employee.id),
+        { code: "FORBIDDEN" },
+    );
+    const owners = await listOwners();
+    assert.equal(owners.length, 1);
+    const [updated] = await db.select().from(workspaces).where(eq(workspaces.id, workspace.id));
+    assert.equal(updated.ownerId, owners[0].userId);
+});
+
+test("workspace removal revokes task grants and closes the member's active work", async () => {
+    const { removeWorkspaceMember } = await import("../src/lib/services/organization");
+    const { setTaskParticipant } = await import("../src/lib/services/task-participants");
+    const { applyTaskWorkflow } = await import("../src/lib/services/task-workflow");
+    const { db } = database;
+    const { taskActionRequests, tasks, timeEntries, workspaceMembers } = schema;
+    const [membership] = await db.select().from(workspaceMembers).where(and(
+        eq(workspaceMembers.workspaceId, workspaceId),
+        eq(workspaceMembers.userId, other.id),
+    ));
+    const task = await taskService.createTask(manager, {
+        projectId,
+        title: "Workspace membership cleanup",
+        assigneeId: employee.id,
+    });
+    assert.ok(task);
+    await setTaskParticipant(manager, task.id, other.id, "contributor");
+    await taskService.updateTask(manager, task.id, {
+        requiresReview: true,
+        reviewerId: other.id,
+    });
+    await applyTaskWorkflow(employee, task.id, {
+        action: "block",
+        targetUserId: other.id,
+        reason: "Need help with the result",
+    });
+    const running = await timeService.createTimeEntry(other, { taskId: task.id });
+
+    await removeWorkspaceMember(admin, workspaceId, other.id);
+    await db.insert(workspaceMembers).values(membership);
+    await assert.rejects(scope.requireTaskAccess(other, task.id), { code: "NOT_FOUND" });
+    const [saved] = await db.select().from(tasks).where(eq(tasks.id, task.id));
+    assert.equal(saved.assigneeId, employee.id);
+    assert.equal(saved.reviewerId, null);
+    assert.equal(saved.helperId, null);
+    const [request] = await db.select().from(taskActionRequests).where(and(
+        eq(taskActionRequests.taskId, task.id),
+        eq(taskActionRequests.targetUserId, other.id),
+    ));
+    assert.ok(request?.resolvedAt);
+    const [stopped] = await db.select().from(timeEntries).where(eq(timeEntries.id, running.id));
+    assert.ok(stopped.endAt && stopped.endAt > stopped.startAt);
 });

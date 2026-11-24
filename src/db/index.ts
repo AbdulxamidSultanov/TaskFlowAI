@@ -15,3 +15,5 @@ const client = createClient(config);
 export const db = drizzle(client, { schema });
 export { client };
 export type Db = typeof db;
+export type DbReader = Pick<Db, "select">;
+export type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];

@@ -99,6 +99,12 @@ test("upgrade legacy database keeps tasks, comments, tags and records date repai
         }
     } finally {
         client.close();
-        rmSync(dir, { recursive: true, force: true });
+        try {
+            rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
+        } catch (error) {
+            // libSQL may keep the temporary SQLite file locked until process exit on Windows.
+            if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM")
+                throw error;
+        }
     }
 });

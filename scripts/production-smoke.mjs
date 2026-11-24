@@ -1,6 +1,6 @@
 // Run after npm run build. All writes and server processes use a disposable database.
 import assert from "node:assert/strict";
-import { mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
+import { closeSync, mkdtempSync, openSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomBytes } from "node:crypto";
@@ -31,19 +31,23 @@ try {
     await new Promise((resolve) => allocator.close(resolve));
     const base = `http://127.0.0.1:${port}`;
     const output = openSync(join(dir, "server.log"), "w");
-    server = spawn(
-        process.execPath,
-        [
-            "node_modules/tsx/dist/cli.mjs",
-            "scripts/run.ts",
-            "--production",
-            "--port",
-            String(port),
-            "--hostname",
-            "127.0.0.1",
-        ],
-        { env, stdio: ["ignore", output, output], detached: true },
-    );
+    try {
+        server = spawn(
+            process.execPath,
+            [
+                "node_modules/tsx/dist/cli.mjs",
+                "scripts/run.ts",
+                "--production",
+                "--port",
+                String(port),
+                "--hostname",
+                "127.0.0.1",
+            ],
+            { env, stdio: ["ignore", output, output], detached: true },
+        );
+    } finally {
+        closeSync(output);
+    }
     let ready = false;
     for (let n = 0; n < 80; n++) {
         try {
@@ -349,10 +353,16 @@ try {
     );
 } finally {
     if (server?.pid) {
-        try {
-            process.kill(-server.pid, "SIGTERM");
-        } catch {}
+        if (process.platform === "win32") {
+            spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], {
+                stdio: "ignore",
+            });
+        } else {
+            try {
+                process.kill(-server.pid, "SIGTERM");
+            } catch {}
+        }
         await delay(500);
     }
-    rmSync(dir, { recursive: true, force: true });
+    rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 100 });
 }

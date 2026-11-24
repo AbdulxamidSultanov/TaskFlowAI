@@ -1,13 +1,13 @@
 import { and, eq, inArray } from "drizzle-orm";
 
-import { db } from "@/db";
+import { db, type DbReader } from "@/db";
 import { workspaceMembers, workspaces } from "@/db/schema";
 import { ApiError } from "@/lib/api/http";
 import type { AuthUser } from "@/lib/auth/session";
 import { requireRole } from "@/lib/auth/session";
 
-export async function getWorkspaceIdsForUser(userId: string) {
-    const rows = await db
+export async function getWorkspaceIdsForUser(userId: string, store: DbReader = db) {
+    const rows = await store
         .select({ workspaceId: workspaceMembers.workspaceId })
         .from(workspaceMembers)
         .where(eq(workspaceMembers.userId, userId));
@@ -23,8 +23,9 @@ export async function requireWorkspaceMember(
         "admin",
         "member",
     ],
+    store: DbReader = db,
 ) {
-    const [membership] = await db
+    const [membership] = await store
         .select({
             workspace: workspaces,
             role: workspaceMembers.role,
@@ -44,7 +45,7 @@ export async function requireWorkspaceMember(
         // access to workspace-scoped APIs where they have no explicit member
         // row. Treat them as workspace admins instead of returning a 403.
         if (user.role === "admin") {
-            const [workspace] = await db
+            const [workspace] = await store
                 .select()
                 .from(workspaces)
                 .where(eq(workspaces.id, workspaceId))
@@ -87,13 +88,13 @@ export async function requireAnyWorkspaceAccess(user: AuthUser) {
     return ids;
 }
 
-export async function getAccessibleWorkspaceIds(user: AuthUser) {
+export async function getAccessibleWorkspaceIds(user: AuthUser, store: DbReader = db) {
     if (user.role === "admin") {
-        const rows = await db.select({ id: workspaces.id }).from(workspaces);
+        const rows = await store.select({ id: workspaces.id }).from(workspaces);
         return rows.map((row) => row.id);
     }
 
-    return getWorkspaceIdsForUser(user.id);
+    return getWorkspaceIdsForUser(user.id, store);
 }
 
 export async function assertWorkspaceIds(

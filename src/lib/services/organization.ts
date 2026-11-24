@@ -1,6 +1,14 @@
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { users, workspaceMembers, workspaces } from "@/db/schema";
+import {
+    taskActionRequests,
+    taskParticipants,
+    tasks,
+    timeEntries,
+    users,
+    workspaceMembers,
+    workspaces,
+} from "@/db/schema";
 import { ApiError } from "@/lib/api/http";
 import { visibleUserIds } from "@/lib/auth/scope";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
@@ -85,16 +93,21 @@ export async function transferOwnership(
     workspaceId: string,
     newOwnerId: string,
 ) {
-    const { workspace } = await requireWorkspaceMember(user, workspaceId, [
-        "owner",
-    ]);
-    if (workspace.ownerId !== user.id)
-        throw new ApiError(
-            403,
-            "Only the current owner can transfer ownership",
-            "FORBIDDEN",
-        );
     await db.transaction(async (tx) => {
+        const { workspace } = await requireWorkspaceMember(
+            user,
+            workspaceId,
+            ["owner"],
+            tx,
+        );
+        if (workspace.ownerId !== user.id)
+            throw new ApiError(
+                403,
+                "Only the current owner can transfer ownership",
+                "FORBIDDEN",
+            );
+        if (newOwnerId === user.id) return;
+
         const [target] = await tx
             .select()
             .from(workspaceMembers)
@@ -129,4 +142,88 @@ export async function transferOwnership(
             .where(eq(workspaces.id, workspaceId));
     });
     return { updated: true };
+}
+
+export async function removeWorkspaceMember(
+    actor: AuthUser,
+    workspaceId: string,
+    userId: string,
+) {
+    await db.transaction(async (tx) => {
+        await requireWorkspaceMember(
+            actor,
+            workspaceId,
+            ["owner", "admin"],
+            tx,
+        );
+        if (userId === actor.id)
+            throw new ApiError(
+                400,
+                "Use the leave-workspace flow to remove yourself",
+                "CANNOT_REMOVE_SELF",
+            );
+
+        const workspaceMembership = and(
+            eq(workspaceMembers.workspaceId, workspaceId),
+            eq(workspaceMembers.userId, userId),
+        );
+        const [membership] = await tx
+            .select({ role: workspaceMembers.role })
+            .from(workspaceMembers)
+            .where(workspaceMembership);
+        if (!membership)
+            throw new ApiError(404, "Membership not found", "NOT_FOUND");
+        if (membership.role === "owner")
+            throw new ApiError(
+                400,
+                "Transfer ownership before removing the owner",
+                "CANNOT_REMOVE_OWNER",
+            );
+
+        const inWorkspace = eq(tasks.workspaceId, workspaceId);
+        const taskIds = tx.select({ id: tasks.id }).from(tasks).where(inWorkspace);
+        const now = new Date();
+        await tx
+            .update(timeEntries)
+            .set({ endAt: sql`max(${now.getTime()}, ${timeEntries.startAt} + 1)` })
+            .where(and(
+                inArray(timeEntries.taskId, taskIds),
+                eq(timeEntries.userId, userId),
+                isNull(timeEntries.endAt),
+            ));
+        await tx
+            .update(tasks)
+            .set({ assigneeId: null, updatedAt: now })
+            .where(and(inWorkspace, eq(tasks.assigneeId, userId)));
+        await tx
+            .update(tasks)
+            .set({ reviewerId: null, updatedAt: now })
+            .where(and(inWorkspace, eq(tasks.reviewerId, userId)));
+        await tx
+            .update(tasks)
+            .set({ helperId: null, updatedAt: now })
+            .where(and(inWorkspace, eq(tasks.helperId, userId)));
+        await tx
+            .update(taskActionRequests)
+            .set({ resolvedAt: now })
+            .where(and(
+                inArray(taskActionRequests.taskId, taskIds),
+                eq(taskActionRequests.targetUserId, userId),
+                isNull(taskActionRequests.resolvedAt),
+            ));
+        await tx
+            .delete(taskParticipants)
+            .where(and(
+                inArray(taskParticipants.taskId, taskIds),
+                eq(taskParticipants.userId, userId),
+            ));
+        await tx
+            .update(workspaceMembers)
+            .set({ managerUserId: null })
+            .where(and(
+                eq(workspaceMembers.workspaceId, workspaceId),
+                eq(workspaceMembers.managerUserId, userId),
+            ));
+        await tx.delete(workspaceMembers).where(workspaceMembership);
+    });
 }

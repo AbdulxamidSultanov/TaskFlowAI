@@ -142,3 +142,5 @@ The personal home is now **My day** (`/dashboard`); the previous dashboard remai
 
 Test logins for all 26 employees: [docs/test-accounts.md](docs/test-accounts.md).
 Local deployment and Vercel/Turso tradeoffs: [docs/deployment-testing.md](docs/deployment-testing.md).
+
+Post-MVP release history: [CHANGELOG.md](CHANGELOG.md).

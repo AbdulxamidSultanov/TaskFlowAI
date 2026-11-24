@@ -1,6 +1,6 @@
 import { taskPermissions, requireTaskPermission } from "@/lib/auth/task-rights";
 import {
-    applyTaskWorkflow,
+    applyTaskWorkflowInTransaction,
     initialReviewer,
     actionRecipient,
 } from "./task-workflow";
@@ -524,137 +524,144 @@ export async function updateTask(
     raw: z.infer<typeof taskUpdateSchema>,
 ) {
     const input = taskUpdateSchema.parse(raw);
-    const { task: existing, permissions } = await requireTaskPermission(
-        user,
-        taskId,
-        "view",
-    );
-    const needs = (key: keyof typeof permissions) => {
-        if (!permissions[key])
-            throw new ApiError(
-                403,
-                "This task action is not permitted",
-                "FORBIDDEN",
-            );
-    };
-    for (const key of Object.keys(input)) {
+    await db.transaction(async (tx) => {
+        const { task: current, permissions } = await requireTaskPermission(
+            user,
+            taskId,
+            "view",
+            tx,
+        );
+        const needs = (key: keyof typeof permissions) => {
+            if (!permissions[key])
+                throw new ApiError(
+                    403,
+                    "This task action is not permitted",
+                    "FORBIDDEN",
+                );
+        };
+        for (const key of Object.keys(input)) {
+            if (
+                [
+                    "assigneeId",
+                    "projectId",
+                    "departmentId",
+                    "parentTaskId",
+                ].includes(key)
+            )
+                needs("assign");
+            else if (["dueDate", "startDate"].includes(key))
+                needs("changeDeadline");
+            else if (["requiresReview", "reviewerId"].includes(key))
+                needs("manageParticipants");
+            else if (key === "archived") needs("delete");
+            else if (key === "status") needs("status");
+            else needs("edit");
+        }
         if (
-            [
-                "assigneeId",
-                "projectId",
-                "departmentId",
-                "parentTaskId",
-            ].includes(key)
+            input.status &&
+            (input.status === "blocked" ||
+                input.status === "under_review" ||
+                input.status === "cancelled" ||
+                (input.status === "completed" &&
+                    (input.requiresReview ?? current.requiresReview)) ||
+                current.status === "blocked" ||
+                current.status === "under_review")
+        ) {
+            if (Object.keys(input).some((k) => k !== "status"))
+                throw new ApiError(
+                    422,
+                    "Submit workflow actions separately",
+                    "WORKFLOW_ACTION_REQUIRED",
+                );
+            if (input.status === "blocked")
+                throw new ApiError(
+                    422,
+                    "A block reason and helper are required",
+                    "REASON_REQUIRED",
+                );
+            const action =
+                input.status === "cancelled"
+                    ? "cancel"
+                    : current.status === "blocked" &&
+                        input.status === "in_progress"
+                      ? "unblock"
+                      : input.status === "under_review" ||
+                          input.status === "completed"
+                        ? permissions.review && current.status === "under_review"
+                            ? "accept"
+                            : "submit"
+                        : null;
+            if (!action)
+                throw new ApiError(
+                    422,
+                    "Use the review or unblock action",
+                    "WORKFLOW_ACTION_REQUIRED",
+                );
+            await applyTaskWorkflowInTransaction(tx, user, taskId, { action });
+            return;
+        }
+        if (
+            current.status === "under_review" &&
+            ((input.assigneeId !== undefined &&
+                input.assigneeId !== current.assigneeId) ||
+                (input.reviewerId !== undefined &&
+                    input.reviewerId !== current.reviewerId))
         )
-            needs("assign");
-        else if (["dueDate", "startDate"].includes(key))
-            needs("changeDeadline");
-        else if (["requiresReview", "reviewerId"].includes(key))
-            needs("manageParticipants");
-        else if (key === "archived") needs("delete");
-        else if (key === "status") needs("status");
-        else needs("edit");
-    }
-    if (
-        input.status &&
-        (input.status === "blocked" ||
-            input.status === "under_review" ||
-            input.status === "cancelled" ||
-            (input.status === "completed" &&
-                (input.requiresReview ?? existing.requiresReview)) ||
-            existing.status === "blocked" ||
-            existing.status === "under_review")
-    ) {
-        if (Object.keys(input).some((k) => k !== "status"))
             throw new ApiError(
-                422,
-                "Submit workflow actions separately",
-                "WORKFLOW_ACTION_REQUIRED",
+                409,
+                "Return the task for rework before changing its assignee or reviewer",
+                "REVIEW_PENDING",
             );
-        if (input.status === "blocked")
+        if (
+            input.assigneeId &&
+            input.assigneeId === current.reviewerId &&
+            !input.reviewerId
+        )
             throw new ApiError(
                 422,
-                "A block reason and helper are required",
-                "REASON_REQUIRED",
-            );
-        const action =
-            input.status === "cancelled"
-                ? "cancel"
-                : existing.status === "blocked" &&
-                    input.status === "in_progress"
-                  ? "unblock"
-                  : input.status === "under_review" ||
-                      input.status === "completed"
-                    ? permissions.review && existing.status === "under_review"
-                        ? "accept"
-                        : "submit"
-                    : null;
-        if (!action)
-            throw new ApiError(
-                422,
-                "Use the review or unblock action",
-                "WORKFLOW_ACTION_REQUIRED",
-            );
-        await applyTaskWorkflow(user, taskId, { action });
-        return getTaskDetail(taskId, user);
-    }
-    if (
-        existing.status === "under_review" &&
-        ((input.assigneeId !== undefined &&
-            input.assigneeId !== existing.assigneeId) ||
-            (input.reviewerId !== undefined &&
-                input.reviewerId !== existing.reviewerId))
-    )
-        throw new ApiError(
-            409,
-            "Return the task for rework before changing its assignee or reviewer",
-            "REVIEW_PENDING",
-        );
-    if (
-        input.assigneeId &&
-        input.assigneeId === existing.reviewerId &&
-        !input.reviewerId
-    )
-        throw new ApiError(
-            422,
-            "Choose a different reviewer before reassigning the task",
-            "INVALID_REVIEWER",
-        );
-    if (input.reviewerId) {
-        if (input.reviewerId === (input.assigneeId ?? existing.assigneeId))
-            throw new ApiError(
-                422,
-                "Assignee cannot review own work",
+                "Choose a different reviewer before reassigning the task",
                 "INVALID_REVIEWER",
             );
-        await actionRecipient(input.reviewerId, taskId, "comment");
-    }
-    if (input.requiresReview === false && existing.status === "under_review")
-        throw new ApiError(
-            409,
-            "Finish the pending review first",
-            "REVIEW_PENDING",
-        );
-    if (
-        input.requiresReview === true &&
-        !input.reviewerId &&
-        !existing.reviewerId
-    )
-        input.reviewerId = await initialReviewer(
-            existing.workspaceId,
-            input.assigneeId ?? existing.assigneeId,
-        );
+        if (input.reviewerId) {
+            if (input.reviewerId === (input.assigneeId ?? current.assigneeId))
+                throw new ApiError(
+                    422,
+                    "Assignee cannot review own work",
+                    "INVALID_REVIEWER",
+                );
+            await actionRecipient(input.reviewerId, taskId, "comment", tx);
+        }
+        if (input.requiresReview === false && current.status === "under_review")
+            throw new ApiError(
+                409,
+                "Finish the pending review first",
+                "REVIEW_PENDING",
+            );
+        if (
+            input.requiresReview === true &&
+            !input.reviewerId &&
+            !current.reviewerId
+        )
+            input.reviewerId = await initialReviewer(
+                current.workspaceId,
+                input.assigneeId === undefined
+                    ? current.assigneeId
+                    : input.assigneeId,
+                undefined,
+                tx,
+            );
 
-    if (input.projectId)
-        await requireProjectAccess(user, input.projectId, true);
-    if (input.assigneeId)
-        await assertAssignable(user, existing.workspaceId, input.assigneeId);
-    if (input.parentTaskId) await requireTaskAccess(user, input.parentTaskId);
-    await db.transaction(async (tx) => {
-        const [current] = await tx
-            .select()
-            .from(tasks)
-            .where(eq(tasks.id, taskId));
+        if (input.projectId)
+            await requireProjectAccess(user, input.projectId, true, tx);
+        if (input.assigneeId)
+            await assertAssignable(
+                user,
+                current.workspaceId,
+                input.assigneeId,
+                tx,
+            );
+        if (input.parentTaskId)
+            await requireTaskAccess(user, input.parentTaskId, false, tx);
         const { project, tagIds } = await validateRelations(
             tx,
             current.workspaceId,

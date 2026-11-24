@@ -1,5 +1,5 @@
 import { and, eq } from "drizzle-orm";
-import { db } from "@/db";
+import { db, type DbReader } from "@/db";
 import { taskParticipants, workspaceMembers, type Task } from "@/db/schema";
 import { ApiError } from "@/lib/api/http";
 import { requireWorkspaceMember } from "./guards";
@@ -24,14 +24,15 @@ export type TaskPermissions = {
 export async function taskPermissions(
     user: AuthUser,
     task: Task,
+    store: DbReader = db,
 ): Promise<TaskPermissions> {
-    const membership = await requireWorkspaceMember(user, task.workspaceId, [
-        "owner",
-        "admin",
-        "member",
-        "viewer",
-    ]);
-    const [own] = await db
+    const membership = await requireWorkspaceMember(
+        user,
+        task.workspaceId,
+        ["owner", "admin", "member", "viewer"],
+        store,
+    );
+    const [own] = await store
         .select()
         .from(workspaceMembers)
         .where(
@@ -40,7 +41,7 @@ export async function taskPermissions(
                 eq(workspaceMembers.userId, user.id),
             ),
         );
-    const scope = await workspaceScope(user, task.workspaceId);
+    const scope = await workspaceScope(user, task.workspaceId, store);
     const admin = membership.role === "owner" || membership.role === "admin";
     const supervisor =
         own?.accessScope === "team" &&
@@ -50,7 +51,7 @@ export async function taskPermissions(
                 scope !== null &&
                 scope.includes(task.assigneeId)));
     const manager = membership.role !== "viewer" && (admin || supervisor);
-    const [participant] = await db
+    const [participant] = await store
         .select()
         .from(taskParticipants)
         .where(
@@ -91,9 +92,10 @@ export async function requireTaskPermission(
     user: AuthUser,
     id: string,
     action: keyof TaskPermissions,
+    store: DbReader = db,
 ) {
-    const task = await requireTaskAccess(user, id);
-    const permissions = await taskPermissions(user, task);
+    const task = await requireTaskAccess(user, id, false, store);
+    const permissions = await taskPermissions(user, task, store);
     if (!permissions[action])
         throw new ApiError(
             403,
