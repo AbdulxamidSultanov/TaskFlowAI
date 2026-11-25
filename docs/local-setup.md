@@ -85,7 +85,9 @@ npm run dev -- --port 3000
 | Роль | Email | Пароль |
 |---|---|---|
 | Администратор / владелец workspace | `demo@taskflow.ai` | `Demo1234!` |
-| Сотрудники отделов | например, `aziz.karimov@taskflow.ai` | `Password123!` |
+| Сотрудники отделов | например, `timur.aliev@mayak.example` | `Password123!` |
+
+[Все аккаунты веб-студии «Маяк»](test-accounts.md).
 
 ## Полезные команды
 

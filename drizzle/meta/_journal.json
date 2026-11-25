@@ -50,6 +50,13 @@
       "when": 1794493817314,
       "tag": "0006_tired_madame_masque",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1795202578116,
+      "tag": "0007_exotic_secret_warriors",
+      "breakpoints": true
     }
   ]
 }

@@ -273,8 +273,8 @@ export const aiConversationCreateSchema = z.object({
 });
 
 export const aiMessageCreateSchema = z.object({
-    model: z.string().trim().max(80).optional(),
     content: z.string().trim().min(1).max(12000),
+    model: z.string().trim().max(80).optional(),
 });
 
 export const aiPlanRequestSchema = z.object({
@@ -283,11 +283,25 @@ export const aiPlanRequestSchema = z.object({
     availableMinutes: z.number().int().min(60).max(1440).optional(),
 });
 
-export const aiTaskGenerationSchema = z.object({
-    workspaceId: id,
-    prompt: z.string().trim().min(8).max(2000),
-    projectId: id.nullable().optional(),
-});
+export const aiTaskGenerationSchema = z
+    .object({
+        workspaceId: id,
+        mode: z.enum(["tasks", "status-review", "actions"]).optional(),
+        prompt: z.string().trim().max(2000).optional(),
+        projectId: id.nullable().optional(),
+    })
+    .superRefine((value, ctx) => {
+        if (
+            value.mode !== "status-review" &&
+            (!value.prompt || value.prompt.length < 8)
+        ) {
+            ctx.addIssue({
+                code: "custom",
+                path: ["prompt"],
+                message: "prompt must be 8-2000 characters",
+            });
+        }
+    });
 
 export const aiTaskDraftUpdateSchema = z.object({
     title: z.string().trim().min(2).max(240).optional(),
@@ -302,6 +316,8 @@ export const aiTaskDraftUpdateSchema = z.object({
     departmentId: id.nullable().optional(),
     projectId: id.nullable().optional(),
     estimateMinutes: z.number().int().min(0).max(10000).nullable().optional(),
+    suggestedStatus: z.enum(taskStatuses).optional(),
+    suggestedReason: z.string().trim().max(500).nullable().optional(),
 });
 
 export type AiTaskDraftUpdateInput = z.infer<typeof aiTaskDraftUpdateSchema>;

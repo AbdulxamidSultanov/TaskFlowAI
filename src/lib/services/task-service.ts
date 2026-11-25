@@ -33,7 +33,7 @@ import type { z } from "zod";
 import { notifyAssignment } from "./notifications";
 import { alias } from "drizzle-orm/sqlite-core";
 
-import { db } from "@/db";
+import { db, type DbTransaction } from "@/db";
 import {
     comments,
     taskActivity,
@@ -513,264 +513,271 @@ export async function updateTask(
     taskId: string,
     raw: z.infer<typeof taskUpdateSchema>,
 ) {
+    await db.transaction((tx) => updateTaskInTransaction(tx, user, taskId, raw));
+    return getTaskDetail(taskId, user);
+}
+
+export async function updateTaskInTransaction(
+    tx: DbTransaction,
+    user: AuthUser,
+    taskId: string,
+    raw: z.infer<typeof taskUpdateSchema>,
+) {
     const input = taskUpdateSchema.parse(raw);
-    await db.transaction(async (tx) => {
-        const { task: current, permissions } = await requireTaskPermission(
-            user,
-            taskId,
-            "view",
-            tx,
-        );
-        const needs = (key: keyof typeof permissions) => {
-            if (!permissions[key])
-                throw new ApiError(
-                    403,
-                    "This task action is not permitted",
-                    "FORBIDDEN",
-                );
-        };
-        for (const key of Object.keys(input)) {
-            if (
-                [
-                    "assigneeId",
-                    "projectId",
-                    "departmentId",
-                    "parentTaskId",
-                ].includes(key)
-            )
-                needs("assign");
-            else if (["dueDate", "startDate"].includes(key))
-                needs("changeDeadline");
-            else if (["requiresReview", "reviewerId"].includes(key))
-                needs("manageParticipants");
-            else if (key === "archived") needs("delete");
-            else if (key === "status") needs("status");
-            else needs("edit");
-        }
-        if (
-            input.status &&
-            (input.status === "blocked" ||
-                input.status === "under_review" ||
-                input.status === "cancelled" ||
-                (input.status === "completed" &&
-                    (input.requiresReview ?? current.requiresReview)) ||
-                current.status === "blocked" ||
-                current.status === "under_review")
-        ) {
-            if (Object.keys(input).some((k) => k !== "status"))
-                throw new ApiError(
-                    422,
-                    "Submit workflow actions separately",
-                    "WORKFLOW_ACTION_REQUIRED",
-                );
-            if (input.status === "blocked")
-                throw new ApiError(
-                    422,
-                    "A block reason and helper are required",
-                    "REASON_REQUIRED",
-                );
-            const action =
-                input.status === "cancelled"
-                    ? "cancel"
-                    : current.status === "blocked" &&
-                        input.status === "in_progress"
-                      ? "unblock"
-                      : input.status === "under_review" ||
-                          input.status === "completed"
-                        ? permissions.review && current.status === "under_review"
-                            ? "accept"
-                            : "submit"
-                        : null;
-            if (!action)
-                throw new ApiError(
-                    422,
-                    "Use the review or unblock action",
-                    "WORKFLOW_ACTION_REQUIRED",
-                );
-            await applyTaskWorkflowInTransaction(tx, user, taskId, { action });
-            return;
-        }
-        if (
-            current.status === "under_review" &&
-            ((input.assigneeId !== undefined &&
-                input.assigneeId !== current.assigneeId) ||
-                (input.reviewerId !== undefined &&
-                    input.reviewerId !== current.reviewerId))
-        )
+    const { task: current, permissions } = await requireTaskPermission(
+        user,
+        taskId,
+        "view",
+        tx,
+    );
+    const needs = (key: keyof typeof permissions) => {
+        if (!permissions[key])
             throw new ApiError(
-                409,
-                "Return the task for rework before changing its assignee or reviewer",
-                "REVIEW_PENDING",
+                403,
+                "This task action is not permitted",
+                "FORBIDDEN",
             );
+    };
+    for (const key of Object.keys(input)) {
         if (
-            input.assigneeId &&
-            input.assigneeId === current.reviewerId &&
-            !input.reviewerId
+            [
+                "assigneeId",
+                "projectId",
+                "departmentId",
+                "parentTaskId",
+            ].includes(key)
         )
+            needs("assign");
+        else if (["dueDate", "startDate"].includes(key))
+            needs("changeDeadline");
+        else if (["requiresReview", "reviewerId"].includes(key))
+            needs("manageParticipants");
+        else if (key === "archived") needs("delete");
+        else if (key === "status") needs("status");
+        else needs("edit");
+    }
+    if (
+        input.status &&
+        (input.status === "blocked" ||
+            input.status === "under_review" ||
+            input.status === "cancelled" ||
+            (input.status === "completed" &&
+                (input.requiresReview ?? current.requiresReview)) ||
+            current.status === "blocked" ||
+            current.status === "under_review")
+    ) {
+        if (Object.keys(input).some((k) => k !== "status"))
             throw new ApiError(
                 422,
-                "Choose a different reviewer before reassigning the task",
+                "Submit workflow actions separately",
+                "WORKFLOW_ACTION_REQUIRED",
+            );
+        if (input.status === "blocked")
+            throw new ApiError(
+                422,
+                "A block reason and helper are required",
+                "REASON_REQUIRED",
+            );
+        const action =
+            input.status === "cancelled"
+                ? "cancel"
+                : current.status === "blocked" &&
+                    input.status === "in_progress"
+                  ? "unblock"
+                  : input.status === "under_review" ||
+                      input.status === "completed"
+                    ? permissions.review && current.status === "under_review"
+                        ? "accept"
+                        : "submit"
+                    : null;
+        if (!action)
+            throw new ApiError(
+                422,
+                "Use the review or unblock action",
+                "WORKFLOW_ACTION_REQUIRED",
+            );
+        await applyTaskWorkflowInTransaction(tx, user, taskId, { action });
+        return;
+    }
+    if (
+        current.status === "under_review" &&
+        ((input.assigneeId !== undefined &&
+            input.assigneeId !== current.assigneeId) ||
+            (input.reviewerId !== undefined &&
+                input.reviewerId !== current.reviewerId))
+    )
+        throw new ApiError(
+            409,
+            "Return the task for rework before changing its assignee or reviewer",
+            "REVIEW_PENDING",
+        );
+    if (
+        input.assigneeId &&
+        input.assigneeId === current.reviewerId &&
+        !input.reviewerId
+    )
+        throw new ApiError(
+            422,
+            "Choose a different reviewer before reassigning the task",
+            "INVALID_REVIEWER",
+        );
+    if (input.reviewerId) {
+        if (input.reviewerId === (input.assigneeId ?? current.assigneeId))
+            throw new ApiError(
+                422,
+                "Assignee cannot review own work",
                 "INVALID_REVIEWER",
             );
-        if (input.reviewerId) {
-            if (input.reviewerId === (input.assigneeId ?? current.assigneeId))
-                throw new ApiError(
-                    422,
-                    "Assignee cannot review own work",
-                    "INVALID_REVIEWER",
-                );
-            await actionRecipient(input.reviewerId, taskId, "comment", tx);
-        }
-        if (input.requiresReview === false && current.status === "under_review")
+        await actionRecipient(input.reviewerId, taskId, "comment", tx);
+    }
+    if (input.requiresReview === false && current.status === "under_review")
+        throw new ApiError(
+            409,
+            "Finish the pending review first",
+            "REVIEW_PENDING",
+        );
+    if (
+        input.requiresReview === true &&
+        !input.reviewerId &&
+        !current.reviewerId
+    )
+        input.reviewerId = await initialReviewer(
+            current.workspaceId,
+            input.assigneeId === undefined
+                ? current.assigneeId
+                : input.assigneeId,
+            undefined,
+            tx,
+        );
+
+    if (input.projectId)
+        await requireProjectAccess(user, input.projectId, true, tx);
+    if (input.assigneeId)
+        await assertAssignable(
+            user,
+            current.workspaceId,
+            input.assigneeId,
+            tx,
+        );
+    if (input.parentTaskId)
+        await requireTaskAccess(user, input.parentTaskId, false, tx);
+    const { project, tagIds } = await validateRelations(
+        tx,
+        current.workspaceId,
+        input.projectId ?? current.projectId,
+        input,
+        taskId,
+    );
+    const status = input.status ?? current.status;
+    if (status === "completed" && current.status !== "completed") {
+        const dependencies = await tx
+            .select({ status: tasks.status })
+            .from(taskDependencies)
+            .innerJoin(tasks, eq(tasks.id, taskDependencies.dependsOnId))
+            .where(eq(taskDependencies.taskId, taskId));
+        if (
+            dependencies.some(
+                (row) => !["completed", "cancelled"].includes(row.status),
+            )
+        )
             throw new ApiError(
                 409,
-                "Finish the pending review first",
-                "REVIEW_PENDING",
+                "Complete blocking dependencies first",
+                "TASK_BLOCKED",
             );
-        if (
-            input.requiresReview === true &&
-            !input.reviewerId &&
-            !current.reviewerId
-        )
-            input.reviewerId = await initialReviewer(
-                current.workspaceId,
-                input.assigneeId === undefined
-                    ? current.assigneeId
-                    : input.assigneeId,
-                undefined,
-                tx,
-            );
-
-        if (input.projectId)
-            await requireProjectAccess(user, input.projectId, true, tx);
-        if (input.assigneeId)
-            await assertAssignable(
-                user,
-                current.workspaceId,
-                input.assigneeId,
-                tx,
-            );
-        if (input.parentTaskId)
-            await requireTaskAccess(user, input.parentTaskId, false, tx);
-        const { project, tagIds } = await validateRelations(
-            tx,
-            current.workspaceId,
-            input.projectId ?? current.projectId,
-            input,
-            taskId,
-        );
-        const status = input.status ?? current.status;
-        if (status === "completed" && current.status !== "completed") {
-            const dependencies = await tx
-                .select({ status: tasks.status })
-                .from(taskDependencies)
-                .innerJoin(tasks, eq(tasks.id, taskDependencies.dependsOnId))
-                .where(eq(taskDependencies.taskId, taskId));
-            if (
-                dependencies.some(
-                    (row) => !["completed", "cancelled"].includes(row.status),
-                )
-            )
-                throw new ApiError(
-                    409,
-                    "Complete blocking dependencies first",
-                    "TASK_BLOCKED",
-                );
-        }
-        const startDate =
-            input.startDate === undefined
-                ? current.startDate
-                : input.startDate
-                  ? new Date(input.startDate)
-                  : null;
-        const dueDate =
-            input.dueDate === undefined
-                ? current.dueDate
-                : input.dueDate
-                  ? new Date(input.dueDate)
-                  : null;
-        assertDates(startDate, dueDate);
-        const { tagIds: ignoredTags, archived, ...fields } = input;
-        void ignoredTags;
-        const [updated] = await tx
-            .update(tasks)
-            .set({
-                ...fields,
-                projectId: project.id,
-                departmentId: project.departmentId,
-                startDate,
-                dueDate,
-                archivedAt:
-                    archived === undefined
-                        ? current.archivedAt
-                        : archived
-                          ? new Date()
-                          : null,
-                completedAt:
-                    status === "completed"
-                        ? (current.completedAt ?? new Date())
-                        : null,
-                updatedAt: new Date(),
-            })
-            .where(eq(tasks.id, taskId))
-            .returning();
-        if (input.tagIds !== undefined) {
-            await tx.delete(taskTags).where(eq(taskTags.taskId, taskId));
-            if (tagIds.length)
-                await tx
-                    .insert(taskTags)
-                    .values(tagIds.map((tagId) => ({ taskId, tagId })));
-        }
-        if (["completed", "cancelled"].includes(status) || archived === true) {
-            const running = await tx
-                .select()
-                .from(timeEntries)
-                .where(
-                    and(
-                        eq(timeEntries.taskId, taskId),
-                        sql`${timeEntries.endAt} IS NULL`,
-                    ),
-                );
-            for (const entry of running)
-                await tx
-                    .update(timeEntries)
-                    .set({
-                        endAt: new Date(
-                            Math.max(Date.now(), entry.startAt.getTime() + 1),
-                        ),
-                    })
-                    .where(eq(timeEntries.id, entry.id));
-        }
-        await tx.insert(taskActivity).values({
-            taskId,
-            actorId: user.id,
-            action:
+    }
+    const startDate =
+        input.startDate === undefined
+            ? current.startDate
+            : input.startDate
+              ? new Date(input.startDate)
+              : null;
+    const dueDate =
+        input.dueDate === undefined
+            ? current.dueDate
+            : input.dueDate
+              ? new Date(input.dueDate)
+              : null;
+    assertDates(startDate, dueDate);
+    const { tagIds: ignoredTags, archived, ...fields } = input;
+    void ignoredTags;
+    const [updated] = await tx
+        .update(tasks)
+        .set({
+            ...fields,
+            projectId: project.id,
+            departmentId: project.departmentId,
+            startDate,
+            dueDate,
+            archivedAt:
                 archived === undefined
-                    ? "updated"
+                    ? current.archivedAt
                     : archived
-                      ? "archived"
-                      : "restored",
-            changes: JSON.stringify(input),
-        });
-        if (
-            input.dueDate !== undefined ||
-            input.assigneeId !== undefined ||
-            input.archived ||
-            ["completed", "cancelled"].includes(updated.status)
-        )
+                      ? new Date()
+                      : null,
+            completedAt:
+                status === "completed"
+                    ? (current.completedAt ?? new Date())
+                    : null,
+            updatedAt: new Date(),
+        })
+        .where(eq(tasks.id, taskId))
+        .returning();
+    if (input.tagIds !== undefined) {
+        await tx.delete(taskTags).where(eq(taskTags.taskId, taskId));
+        if (tagIds.length)
             await tx
-                .delete(notifications)
-                .where(
-                    and(
-                        eq(notifications.entityId, taskId),
-                        eq(notifications.type, "task_due"),
-                        sql`${notifications.readAt} IS NULL`,
+                .insert(taskTags)
+                .values(tagIds.map((tagId) => ({ taskId, tagId })));
+    }
+    if (["completed", "cancelled"].includes(status) || archived === true) {
+        const running = await tx
+            .select()
+            .from(timeEntries)
+            .where(
+                and(
+                    eq(timeEntries.taskId, taskId),
+                    sql`${timeEntries.endAt} IS NULL`,
+                ),
+            );
+        for (const entry of running)
+            await tx
+                .update(timeEntries)
+                .set({
+                    endAt: new Date(
+                        Math.max(Date.now(), entry.startAt.getTime() + 1),
                     ),
-                );
-        if (updated.assigneeId && updated.assigneeId !== current.assigneeId)
-            await notifyAssignment(tx, updated);
+                })
+                .where(eq(timeEntries.id, entry.id));
+    }
+    await tx.insert(taskActivity).values({
+        taskId,
+        actorId: user.id,
+        action:
+            archived === undefined
+                ? "updated"
+                : archived
+                  ? "archived"
+                  : "restored",
+        changes: JSON.stringify(input),
     });
-    return getTaskDetail(taskId, user);
+    if (
+        input.dueDate !== undefined ||
+        input.assigneeId !== undefined ||
+        input.archived ||
+        ["completed", "cancelled"].includes(updated.status)
+    )
+        await tx
+            .delete(notifications)
+            .where(
+                and(
+                    eq(notifications.entityId, taskId),
+                    eq(notifications.type, "task_due"),
+                    sql`${notifications.readAt} IS NULL`,
+                ),
+            );
+    if (updated.assigneeId && updated.assigneeId !== current.assigneeId)
+        await notifyAssignment(tx, updated);
 }
 
 export async function deleteTask(user: AuthUser, taskId: string) {

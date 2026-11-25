@@ -26,17 +26,18 @@ Open [http://localhost:3000](http://localhost:3000).
 Подробная инструкция по локальному запуску, настройке окружения и решению проблем:
 [`docs/local-setup.md`](docs/local-setup.md).
 
-**Warning:** `db:setup`/`db:seed` erase demo data. To update an existing database use `npm run db:migrate`, which creates a verified local SQLite backup.
+**Warning:** `db:setup`/`db:seed` replace all application data in the configured database with demo data. To update an existing local database use `npm run db:migrate`, which creates a verified SQLite backup.
 
-`db:setup` applies migrations from `drizzle/` and seeds demo data: 5 departments with
-5 users, projects, tasks, comments, calendar events and notifications per department.
+`db:setup` applies migrations from `drizzle/` and seeds Mayak Web Studio with 12 accounts, 5 departments, 6 web projects and 21 tasks.
 
 ## Demo login
 
 | Role | Email | Password |
 |---|---|---|
 | Admin / workspace owner | `demo@taskflow.ai` | `Demo1234!` |
-| Department employees | e.g. `aziz.karimov@taskflow.ai` | `Password123!` |
+| Department employees | e.g. `timur.aliev@mayak.example` | `Password123!` |
+
+See the [full demo account list](docs/test-accounts.md).
 
 ## Scripts
 

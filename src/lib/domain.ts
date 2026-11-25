@@ -10,6 +10,18 @@ export const taskStatuses = [
 
 export type TaskStatus = (typeof taskStatuses)[number];
 
+// Statuses the AI may propose in drafts. `under_review` and `cancelled` are
+// workflow-governed (reason/review rights) and stay manual-only.
+export const aiProposableStatuses = [
+    "todo",
+    "queued",
+    "in_progress",
+    "completed",
+    "blocked",
+] as const;
+
+export type AiProposableStatus = (typeof aiProposableStatuses)[number];
+
 export const taskPriorities = ["low", "medium", "high", "urgent"] as const;
 export type TaskPriority = (typeof taskPriorities)[number];
 

@@ -1,607 +1,534 @@
 import bcrypt from "bcryptjs";
 
-import { db } from "./index";
+import { loadDatabaseEnvironment } from "./env";
 import {
     aiConversations,
     aiMessages,
     aiPlanItems,
     aiPlans,
+    aiTaskDrafts,
+    authAttempts,
     calendarEvents,
     comments,
     departments,
     notifications,
     projects,
+    reminderDeliveries,
     sessions,
     tags,
-    taskTags,
+    taskActionRequests,
+    taskActivity,
+    taskAttachments,
+    taskDependencies,
+    taskParticipants,
     tasks,
+    taskTags,
+    timeEntries,
     userSettings,
     users,
+    workspaceInvitations,
     workspaceMembers,
     workspaces,
 } from "./schema";
-import type { TaskPriority, TaskStatus } from "@/lib/domain";
 
-type DepartmentSeed = {
-    id: string;
-    name: string;
-    slug: string;
-    description: string;
-    color: string;
-    prefix: string;
-    people: Array<{ name: string; jobTitle: string }>;
-    projects: string[];
-    tasks: string[];
-    comments: string[];
+const workspaceId = "ws-taskflow-hq";
+const demoPassword = "Demo1234!";
+const teamPassword = "Password123!";
+
+const teams = {
+    delivery: {
+        id: "dept-product",
+        slug: "delivery",
+        name: "Управление проектами",
+        description: "Требования, сроки и приёмка клиентских проектов.",
+        color: "#0EA5E9",
+    },
+    engineering: {
+        id: "dept-engineering",
+        slug: "engineering",
+        name: "Веб-разработка",
+        description: "Frontend, backend и интеграции клиентских сайтов.",
+        color: "#4F46E5",
+    },
+    design: {
+        id: "dept-design",
+        slug: "design",
+        name: "UX/UI-дизайн",
+        description: "Исследование сценариев, прототипы и адаптивные интерфейсы.",
+        color: "#DB2777",
+    },
+    quality: {
+        id: "dept-operations",
+        slug: "quality",
+        name: "QA и релизы",
+        description: "Тестирование, среды разработки и выпуск обновлений.",
+        color: "#059669",
+    },
+    clients: {
+        id: "dept-marketing",
+        slug: "client-service",
+        name: "Клиентский сервис",
+        description: "Онбординг, контент и поддержка после запуска.",
+        color: "#D97706",
+    },
 };
 
-const departmentSeeds: DepartmentSeed[] = [
+type Team = keyof typeof teams;
+
+type EmployeeSeed = Pick<typeof users.$inferInsert, "id" | "name" | "email" | "jobTitle"> & {
+    team: Team;
+    manager: string | null;
+    scope: "self" | "team" | "workspace";
+};
+
+const staff = {
+    founder: {
+        id: "user-demo", name: "Шахзод Рахимов", email: "demo@taskflow.ai",
+        jobTitle: "Основатель студии", team: "delivery", manager: null, scope: "workspace",
+    },
+    pm: {
+        id: "user-product-1", name: "Малика Хамидова", email: "malika.khamidova@mayak.example",
+        jobTitle: "Руководитель проектов", team: "delivery", manager: "founder", scope: "workspace",
+    },
+    techLead: {
+        id: "user-engineering-1", name: "Тимур Алиев", email: "timur.aliev@mayak.example",
+        jobTitle: "Технический руководитель", team: "engineering", manager: "founder", scope: "team",
+    },
+    backend: {
+        id: "user-engineering-2", name: "Нодира Саидова", email: "nodira.saidova@mayak.example",
+        jobTitle: "Backend-разработчик", team: "engineering", manager: "techLead", scope: "self",
+    },
+    frontend: {
+        id: "user-engineering-3", name: "Артём Юлдашев", email: "artem.yuldashev@mayak.example",
+        jobTitle: "Frontend-разработчик", team: "engineering", manager: "techLead", scope: "self",
+    },
+    fullstack: {
+        id: "user-engineering-4", name: "Умид Мансуров", email: "umid.mansurov@mayak.example",
+        jobTitle: "Full-stack-разработчик", team: "engineering", manager: "techLead", scope: "self",
+    },
+    designLead: {
+        id: "user-design-1", name: "Сабина Мирзаева", email: "sabina.mirzaeva@mayak.example",
+        jobTitle: "Руководитель дизайна", team: "design", manager: "founder", scope: "team",
+    },
+    designer: {
+        id: "user-design-2", name: "Роман Ким", email: "roman.kim@mayak.example",
+        jobTitle: "UX/UI-дизайнер", team: "design", manager: "designLead", scope: "self",
+    },
+    qaLead: {
+        id: "user-operations-1", name: "Диёра Назарова", email: "diyora.nazarova@mayak.example",
+        jobTitle: "QA-инженер и координатор релизов", team: "quality", manager: "founder", scope: "team",
+    },
+    devops: {
+        id: "user-operations-2", name: "Антон Усманов", email: "anton.usmanov@mayak.example",
+        jobTitle: "DevOps-инженер", team: "quality", manager: "qaLead", scope: "self",
+    },
+    account: {
+        id: "user-marketing-1", name: "Зарина Алимова", email: "zarina.alimova@mayak.example",
+        jobTitle: "Руководитель клиентского сервиса", team: "clients", manager: "founder", scope: "team",
+    },
+    content: {
+        id: "user-marketing-2", name: "Мурод Азимов", email: "murod.azimov@mayak.example",
+        jobTitle: "Контент-менеджер и специалист поддержки", team: "clients", manager: "account", scope: "self",
+    },
+} as const satisfies Record<string, EmployeeSeed>;
+
+type Person = keyof typeof staff;
+
+type TaskSeed = Pick<typeof tasks.$inferInsert, "title" | "description" | "status" | "priority" | "estimateMinutes"> & {
+    id: string;
+    assignee: Person;
+    due: number;
+    reviewer?: Person;
+    blocker?: string;
+    note?: string;
+};
+
+type ProjectSeed = Pick<typeof projects.$inferInsert, "name" | "key" | "description" | "status"> & {
+    id: string;
+    team: Team;
+    owner: Person;
+    due: number;
+    tasks: TaskSeed[];
+};
+
+const portfolio: ProjectSeed[] = [
     {
-        id: "dept-engineering",
-        name: "Engineering",
-        slug: "engineering",
-        description: "Platform, product engineering and infrastructure.",
-        color: "#4F46E5",
-        prefix: "ENG",
-        people: [
-            { name: "Aziz Karimov", jobTitle: "Engineering Manager" },
-            { name: "Dilnoza Ismoilova", jobTitle: "Senior Backend Engineer" },
-            { name: "Jasur Tursunov", jobTitle: "Frontend Engineer" },
-            { name: "Madina Rakhimova", jobTitle: "QA Engineer" },
-            { name: "Bekzod Yusupov", jobTitle: "DevOps Engineer" },
-        ],
-        projects: [
-            "Platform Core",
-            "Mobile App",
-            "API Gateway",
-            "Realtime Sync",
-            "Developer Portal",
-        ],
+        id: "project-engineering-1", key: "SEVER", name: "Личный кабинет «Север»",
+        description: "Веб-кабинет для клиентов логистической компании с заявками и историей отправлений.",
+        team: "engineering", owner: "techLead", due: 14,
         tasks: [
-            "Ship authentication hardening",
-            "Fix realtime sync race condition",
-            "Optimize dashboard queries",
-            "Add API rate limiting",
-            "Upgrade CI pipeline",
-        ],
-        comments: [
-            "Security review is done, one cookie flag left.",
-            "Reproduced on two devices; adding a regression test.",
-            "Query plan improved from 1.8s to 240ms.",
-            "Draft limits agreed with product.",
-            "Cache restore is now under 40 seconds.",
+            {
+                id: "task-engineering-1", title: "Добавить API истории отправлений",
+                description: "Вернуть отправления текущей организации. Поддержать фильтры по статусу и периоду, а также постраничную выдачу.",
+                assignee: "backend", status: "in_progress", priority: "high", estimateMinutes: 240, due: 0,
+                note: "Контракт согласован, таблицу статусов подключаю к тестовому набору данных.",
+            },
+            {
+                id: "task-engineering-2", title: "Сверстать таблицу отправлений",
+                description: "Добавить состояния загрузки, пустой список и ошибки. Для узких экранов показать карточки.",
+                assignee: "frontend", status: "in_progress", estimateMinutes: 240, due: 3,
+            },
+            {
+                id: "task-engineering-3", title: "Проверить разделение данных организаций",
+                description: "Покрыть тестами обращения к чужим отправлениям через список и карточку детали.",
+                assignee: "backend", status: "under_review", reviewer: "techLead", estimateMinutes: 100, priority: "high", due: 1,
+                note: "Тесты готовы. Проверьте сценарий пользователя, у которого есть доступ к двум организациям.",
+            },
+            {
+                id: "task-engineering-4", title: "Уточнить форматы статусов перевозчика",
+                description: "Сопоставить статусы партнёра со статусами кабинета и оформить таблицу маппинга.",
+                assignee: "fullstack", status: "blocked", priority: "high", estimateMinutes: 90, due: -1,
+                blocker: "Партнёр ещё не выдал тестовый ответ со статусами отмены и возврата.",
+            },
+            {
+                id: "task-engineering-5", title: "Подготовить тестовые отправления",
+                description: "Собрать набор для новых, доставленных и отменённых отправлений для проверки сценариев в кабинете.",
+                assignee: "fullstack", status: "completed", estimateMinutes: 60, due: -2,
+            },
+            {
+                id: "task-engineering-6", title: "Согласовать план подключения API партнёра",
+                description: "Уточнить ограничения тестового контура и назначить день совместной проверки.",
+                assignee: "techLead", estimateMinutes: 45, due: 0,
+            },
         ],
     },
     {
-        id: "dept-product",
-        name: "Product",
-        slug: "product",
-        description: "Roadmap, discovery and product operations.",
-        color: "#0EA5E9",
-        prefix: "PRD",
-        people: [
-            { name: "Kamila Saidova", jobTitle: "Head of Product" },
-            { name: "Rustam Abdullaev", jobTitle: "Product Manager" },
-            { name: "Sevara Nazarova", jobTitle: "Product Analyst" },
-            { name: "Timur Khamidov", jobTitle: "Technical Writer" },
-            { name: "Nigora Yuldasheva", jobTitle: "Product Operations" },
-        ],
-        projects: [
-            "Q4 Roadmap",
-            "Onboarding 2.0",
-            "Billing Revamp",
-            "Customer Feedback",
-            "Usage Analytics",
-        ],
+        id: "project-engineering-2", key: "LIST", name: "Интернет-магазин «Лист»",
+        description: "Каталог, корзина и оформление заказа для магазина комнатных растений.",
+        team: "engineering", owner: "techLead", due: 21,
         tasks: [
-            "Finalize Q4 roadmap",
-            "Write onboarding spec",
-            "Review billing edge cases",
-            "Analyze churn survey",
-            "Prepare sprint review",
-        ],
-        comments: [
-            "Roadmap reviewed with department leads.",
-            "Added acceptance criteria for empty states.",
-            "Finance confirmed the proration rules.",
-            "Top three churn reasons identified.",
-            "Demo data is ready for the sprint review.",
+            {
+                id: "task-engineering-7", title: "Добавить фильтры каталога растений",
+                description: "Сохранять выбранные фильтры в URL. Покрыть фильтры по освещению, размеру и наличию.",
+                assignee: "frontend", status: "completed", estimateMinutes: 180, due: -3,
+            },
+            {
+                id: "task-engineering-8", title: "Реализовать расчёт доставки в корзине",
+                description: "Посчитать цену доставки по району и показать итоговую сумму до оформления.",
+                assignee: "backend", estimateMinutes: 240, due: 6,
+            },
+            {
+                id: "task-engineering-9", title: "Проверить восстановление корзины",
+                description: "При повторном открытии сайта восстановить товары и обновить цены и остатки.",
+                assignee: "fullstack", estimateMinutes: 120, due: 8,
+            },
         ],
     },
     {
-        id: "dept-design",
-        name: "Design",
-        slug: "design",
-        description: "Product design, brand and design systems.",
-        color: "#EC4899",
-        prefix: "DSN",
-        people: [
-            { name: "Malika Ergasheva", jobTitle: "Design Lead" },
-            { name: "Sardor Mirzaev", jobTitle: "Product Designer" },
-            { name: "Zarina Akhmedova", jobTitle: "UX Researcher" },
-            { name: "Otabek Sattorov", jobTitle: "Brand Designer" },
-            { name: "Nilufar Qodirova", jobTitle: "Design Systems Designer" },
-        ],
-        projects: [
-            "Design System 2.0",
-            "Mobile UI Refresh",
-            "Brand Guidelines",
-            "Onboarding Flows",
-            "Marketing Site",
-        ],
+        id: "project-product-1", key: "MAYAK", name: "Сайт студии «Маяк»",
+        description: "Портфолио, список услуг и форма заявки для новых клиентов.",
+        team: "delivery", owner: "pm", due: 12,
         tasks: [
-            "Audit design tokens",
-            "Design mobile task cards",
-            "Update brand illustration set",
-            "Prototype onboarding empty states",
-            "Prepare design QA checklist",
-        ],
-        comments: [
-            "Found 14 legacy token aliases.",
-            "Card density options are in Figma.",
-            "Illustrations now use the new palette.",
-            "Prototype covers first-run and no-results states.",
-            "Checklist covers desktop and mobile breakpoints.",
+            {
+                id: "task-product-1", title: "Утвердить структуру портфолио",
+                description: "Согласовать порядок кейсов и список материалов для первых трёх карточек.",
+                assignee: "founder", priority: "high", estimateMinutes: 45, due: 0,
+            },
+            {
+                id: "task-product-2", title: "Согласовать требования к форме заявки",
+                description: "Описать обязательные поля, согласие на обработку данных и подтверждение получения заявки.",
+                assignee: "pm", status: "in_progress", estimateMinutes: 90, due: 1,
+                note: "После ревью уточню сценарий отправки с вложением.",
+            },
+            {
+                id: "task-product-3", title: "Составить график публикации кейсов",
+                description: "Зафиксировать ответственных за тексты, скриншоты и согласование с заказчиками.",
+                assignee: "pm", estimateMinutes: 60, due: 5,
+            },
         ],
     },
     {
-        id: "dept-marketing",
-        name: "Marketing",
-        slug: "marketing",
-        description: "Growth, content, events and partnerships.",
-        color: "#F59E0B",
-        prefix: "MKT",
-        people: [
-            { name: "Shahnoza Alimova", jobTitle: "Marketing Lead" },
-            { name: "Farrukh Nazarov", jobTitle: "Content Strategist" },
-            { name: "Lola Tashkentova", jobTitle: "Growth Manager" },
-            { name: "Anvar Rakhmonov", jobTitle: "SEO Specialist" },
-            { name: "Gulnora Karimova", jobTitle: "Partnership Manager" },
-        ],
-        projects: [
-            "Product Launch",
-            "Content Engine",
-            "SEO Growth",
-            "Partner Program",
-            "Lifecycle Email",
-        ],
+        id: "project-design-1", key: "UX", name: "Дизайн кабинета «Север»",
+        description: "Адаптивные макеты личного кабинета, библиотека компонентов и передача в разработку.",
+        team: "design", owner: "designLead", due: 9,
         tasks: [
-            "Draft launch announcement",
-            "Plan webinar sequence",
-            "Refresh SEO landing page",
-            "Build partner one-pager",
-            "Set up lifecycle email",
-        ],
-        comments: [
-            "Draft is ready for the launch review.",
-            "Webinar dates proposed for the first two weeks.",
-            "Primary keyword moved from page 6 to page 3.",
-            "One-pager includes partner tiers and margins.",
-            "Lifecycle flow has five emails and two branches.",
+            {
+                id: "task-design-1", title: "Подготовить мобильные макеты заявки",
+                description: "Показать этапы создания заявки и состояния ошибок ввода для экранов от 360 пикселей.",
+                assignee: "designer", status: "in_progress", estimateMinutes: 150, due: 0,
+            },
+            {
+                id: "task-design-2", title: "Проверить контраст статусов отправлений",
+                description: "Сверить цветовые токены для выбранных состояний и добавить текстовые подписи к статусам.",
+                assignee: "designLead", status: "completed", estimateMinutes: 75, due: -2,
+            },
+            {
+                id: "task-design-3", title: "Подготовить спецификацию таблицы",
+                description: "Зафиксировать размеры колонок, отображение длинных значений и доступное название кнопок.",
+                assignee: "designer", status: "under_review", reviewer: "designLead", estimateMinutes: 90, due: 2,
+                note: "В макете добавлены варианты пустого списка и ошибки сервера.",
+            },
         ],
     },
     {
-        id: "dept-operations",
-        name: "Operations",
-        slug: "operations",
-        description: "People, finance, office and customer support.",
-        color: "#10B981",
-        prefix: "OPS",
-        people: [
-            { name: "Javohir Usmonov", jobTitle: "Operations Manager" },
-            { name: "Munisa Tursunova", jobTitle: "People Partner" },
-            { name: "Akmal Rashidov", jobTitle: "Finance Specialist" },
-            { name: "Feruza Sobirova", jobTitle: "Support Lead" },
-            { name: "Davron Yoldoshev", jobTitle: "Office Manager" },
-        ],
-        projects: [
-            "Hiring Pipeline",
-            "Vendor Management",
-            "Office Move",
-            "Support Playbook",
-            "Finance Automation",
-        ],
+        id: "project-operations-1", key: "REL", name: "Подготовка пилота «Север»",
+        description: "Тестовый контур, приёмочные проверки и сценарий возврата к предыдущей версии.",
+        team: "quality", owner: "qaLead", due: 14,
         tasks: [
-            "Automate vendor approvals",
-            "Document support escalation",
-            "Plan office move",
-            "Refresh hiring scorecards",
-            "Reconcile monthly invoices",
+            {
+                id: "task-operations-1", title: "Пройти основной сценарий отправления",
+                description: "От создания заявки до отображения отправления в кабинете. Проверить сценарий роли клиента на мобильном и десктопе.",
+                assignee: "qaLead", status: "in_progress", priority: "high", estimateMinutes: 150, due: 0,
+            },
+            {
+                id: "task-operations-2", title: "Настроить тестовый контур кабинета",
+                description: "Поднять тестовую базу и проверить выпуск preview-сборок из веток.",
+                assignee: "devops", status: "completed", estimateMinutes: 180, due: -4,
+            },
+            {
+                id: "task-operations-3", title: "Проверить процедуру отката релиза",
+                description: "На тестовом контуре восстановить предыдущую сборку и проверить, что заявки остаются доступны.",
+                assignee: "devops", priority: "high", estimateMinutes: 90, due: 6,
+            },
         ],
-        comments: [
-            "Approval flow now has two sign-off levels.",
-            "Escalation matrix covers P1 and P2 incidents.",
-            "Move checklist is split by week.",
-            "Scorecards updated for all engineering roles.",
-            "Three invoices need vendor confirmation.",
+    },
+    {
+        id: "project-marketing-1", key: "CARE", name: "Онбординг клиентов",
+        description: "Инструкции для первых пользователей и обработка обратной связи после запуска.",
+        team: "clients", owner: "account", due: 18,
+        tasks: [
+            {
+                id: "task-marketing-1", title: "Собрать вопросы участников пилота",
+                description: "Получить замечания по личному кабинету и согласовать срок ответа по каждому вопросу.",
+                assignee: "account", status: "in_progress", estimateMinutes: 60, due: 0,
+            },
+            {
+                id: "task-marketing-2", title: "Написать инструкцию по первой заявке",
+                description: "Подготовить шаги со скриншотами для администратора клиентской организации.",
+                assignee: "content", estimateMinutes: 120, due: 5,
+            },
+            {
+                id: "task-marketing-3", title: "Подготовить шаблоны ответов поддержки",
+                description: "Описать выдачу доступа, сброс пароля и дальнейшие действия, если статус отправления не меняется.",
+                assignee: "content", status: "completed", estimateMinutes: 90, due: -1,
+            },
         ],
     },
 ];
 
-const taskStatuses: TaskStatus[] = [
-    "in_progress",
-    "todo",
-    "under_review",
-    "blocked",
-    "completed",
-];
-const taskPriorities: TaskPriority[] = [
-    "urgent",
-    "high",
-    "medium",
-    "low",
-    "high",
-];
-const taskEstimates = [120, 90, 60, 45, 30];
-const dueOffsets = [1, 3, 7, -2, -5];
-const workStatuses: Array<"active" | "paused" | "completed"> = [
-    "active",
-    "active",
-    "paused",
-    "active",
-    "completed",
-];
-
-function slugify(value: string) {
-    return value
-        .toLowerCase()
-        .replace(/[^a-z0-9]+/g, ".")
-        .replace(/^\.+|\.+$/g, "");
-}
-
-function localDay(offset: number, hour: number, minute = 0) {
+function day(offset: number, hour: number) {
     const date = new Date();
-    date.setHours(0, 0, 0, 0);
+    date.setHours(hour, 0, 0, 0);
     date.setDate(date.getDate() + offset);
-    date.setHours(hour, minute, 0, 0);
     return date;
 }
 
-async function resetDatabase() {
-    await db.delete(aiPlanItems);
-    await db.delete(aiPlans);
-    await db.delete(aiMessages);
-    await db.delete(aiConversations);
-    await db.delete(notifications);
-    await db.delete(calendarEvents);
-    await db.delete(comments);
-    await db.delete(taskTags);
-    await db.delete(tags);
-    await db.delete(tasks);
-    await db.delete(projects);
-    await db.delete(workspaceMembers);
-    await db.update(departments).set({ workspaceId: null });
-    await db.delete(workspaces);
-    await db.delete(sessions);
-    await db.delete(userSettings);
-    await db.delete(users);
-    await db.delete(departments);
-}
+const meetings = [
+    { id: "event-engineering-1", project: "project-engineering-1", host: "techLead", title: "Демо кабинета «Север»", offset: 0, hour: 15, minutes: 45 },
+    { id: "event-design-1", project: "project-design-1", host: "designLead", title: "Ревью макетов заявки", offset: 1, hour: 11, minutes: 30 },
+    { id: "event-product-1", project: "project-product-1", host: "pm", title: "Согласование портфолио студии", offset: 2, hour: 14, minutes: 30 },
+    { id: "event-operations-1", project: "project-operations-1", host: "qaLead", title: "Репетиция пилотного релиза", offset: 4, hour: 16, minutes: 60 },
+    { id: "event-marketing-1", project: "project-marketing-1", host: "account", title: "Встреча по обратной связи пилота", offset: 5, hour: 11, minutes: 45 },
+] as const;
+
+// Delete children first so the reset also works across migration versions with
+// different ON DELETE behavior.
+const resetTables = [
+    aiTaskDrafts,
+    aiMessages,
+    aiConversations,
+    aiPlanItems,
+    aiPlans,
+    calendarEvents,
+    comments,
+    notifications,
+    reminderDeliveries,
+    taskActionRequests,
+    taskActivity,
+    taskAttachments,
+    taskDependencies,
+    taskParticipants,
+    taskTags,
+    timeEntries,
+    tags,
+    tasks,
+    projects,
+    workspaceInvitations,
+    workspaceMembers,
+    sessions,
+    userSettings,
+    departments,
+    workspaces,
+    users,
+];
 
 async function main() {
-    console.log("Resetting TaskFlowAI database...");
-    await resetDatabase();
-
-    const sharedPasswordHash = await bcrypt.hash("Password123!", 10);
-    const demoPasswordHash = await bcrypt.hash("Demo1234!", 10);
-
-    await db.insert(departments).values(
-        departmentSeeds.map((department) => ({
-            id: department.id,
-            name: department.name,
-            slug: department.slug,
-            description: department.description,
-            color: department.color,
-            createdAt: localDay(-30, 10),
-            updatedAt: localDay(-1, 10),
-        })),
-    );
-
-    const demoUserId = "user-demo";
-    await db.insert(users).values({
-        id: demoUserId,
-        name: "Demo Admin",
-        email: "demo@taskflow.ai",
-        passwordHash: demoPasswordHash,
-        role: "admin",
-        departmentId: "dept-product",
-        jobTitle: "Workspace Admin",
-        timezone: "Asia/Tashkent",
-        createdAt: localDay(-30, 10),
-        updatedAt: localDay(-1, 10),
-    });
-
-    const userRows = departmentSeeds.flatMap((department) =>
-        department.people.map((person, index) => ({
-            id: `user-${department.slug}-${index + 1}`,
-            name: person.name,
-            email: `${slugify(person.name)}@taskflow.ai`,
-            passwordHash: sharedPasswordHash,
-            role: index === 0 ? ("manager" as const) : ("member" as const),
-            departmentId: department.id,
-            jobTitle: person.jobTitle,
-            timezone: "Asia/Tashkent",
-            createdAt: localDay(-25 + index, 10),
-            updatedAt: localDay(-1, 10),
-        })),
-    );
-
-    await db.insert(users).values(userRows);
-    await db.insert(userSettings).values(
-        [demoUserId, ...userRows.map((user) => user.id)].map((userId) => ({
-            userId,
-            theme: "system" as const,
-            locale: "ru" as const,
-            dailySummaryEmail: true,
-            overduePush: true,
-            teamMentions: true,
-            aiModel: "taskflow-rules-v1",
-            updatedAt: localDay(-1, 10),
-        })),
-    );
-
-    const workspaceId = "ws-taskflow-hq";
-    await db.insert(workspaces).values({
-        id: workspaceId,
-        name: "TaskFlow HQ",
-        slug: "taskflow-hq",
-        ownerId: demoUserId,
-        plan: "business",
-        storageUsedBytes: 320 * 1024 * 1024,
-        storageLimitBytes: 20 * 1024 * 1024 * 1024,
-        createdAt: localDay(-30, 10),
-        updatedAt: localDay(-1, 10),
-    });
-
-    await db.insert(workspaceMembers).values([
-        {
-            id: "member-demo",
+    loadDatabaseEnvironment();
+    const { client, db } = await import("./index");
+    try {
+        const [ownerHash, teamHash] = await Promise.all([
+            bcrypt.hash(demoPassword, 10),
+            bcrypt.hash(teamPassword, 10),
+        ]);
+        const createdAt = day(-14, 10);
+        const updatedAt = day(-1, 15);
+        const people = Object.values(staff);
+        const departmentRows = Object.values(teams);
+        const projectRows = portfolio.map(({ id, key, name, description, status, team, owner, due }) => ({
+            id, key, name, description, status,
             workspaceId,
-            userId: demoUserId,
-            role: "owner",
-            joinedAt: localDay(-30, 10),
-        },
-        ...userRows.map((user, index) => ({
-            id: `member-${index + 1}`,
-            workspaceId,
-            userId: user.id,
-            role: "member" as const,
-            accessScope:
-                user.role === "manager" ? ("team" as const) : ("self" as const),
-            managerUserId:
-                user.role === "manager"
-                    ? demoUserId
-                    : `user-${departmentSeeds.find((d) => d.id === user.departmentId)!.slug}-1`,
-            joinedAt: localDay(-20 + (index % 10), 10),
-        })),
-    ]);
-
-    await db.update(departments).set({ workspaceId });
-
-    const projectRows = departmentSeeds.flatMap((department) =>
-        department.projects.map((name, index) => ({
-            id: `project-${department.slug}-${index + 1}`,
-            workspaceId,
-            departmentId: department.id,
-            name,
-            key: `${department.prefix}-${index + 1}`,
-            description: `${name} — ${department.name} initiative.`,
-            color: department.color,
-            status: workStatuses[index],
-            ownerId: `user-${department.slug}-1`,
-            startDate: localDay(-21 + index, 9),
-            dueDate: localDay(14 + index * 7, 18),
-            createdAt: localDay(-21 + index, 9),
-            updatedAt: localDay(-1, 12),
-        })),
-    );
-    await db.insert(projects).values(projectRows);
-
-    const taskRows = departmentSeeds.flatMap((department, departmentIndex) =>
-        department.tasks.map((title, index) => {
-            const status = taskStatuses[index];
-            const completed = status === "completed";
-            return {
-                id: `task-${department.slug}-${index + 1}`,
-                workspaceId,
-                projectId: `project-${department.slug}-${index + 1}`,
-                departmentId: department.id,
-                parentTaskId: null,
-                title,
-                description: `${title}. Owner: ${department.people[(index + 1) % 5].name}.`,
-                status,
-                priority: taskPriorities[index],
-                assigneeId: `user-${department.slug}-${((index + 1) % 5) + 1}`,
-                creatorId: `user-${department.slug}-1`,
-                startDate: localDay(Math.min(-7 + index, dueOffsets[index]), 9),
-                dueDate: localDay(dueOffsets[index], 18),
-                estimateMinutes: taskEstimates[index],
-                position: index,
-                completedAt: completed ? localDay(-1, 16) : null,
-                createdAt: localDay(-14 + departmentIndex + index, 10),
-                updatedAt: localDay(-1, 15),
-            };
-        }),
-    );
-    await db.insert(tasks).values(taskRows);
-
-    const tagRows = departmentSeeds.map((department) => ({
-        id: `tag-${department.slug}`,
-        workspaceId,
-        name: department.name,
-        color: department.color,
-        createdAt: localDay(-20, 10),
-    }));
-    await db.insert(tags).values(tagRows);
-    await db.insert(taskTags).values(
-        taskRows.map((task, index) => ({
-            id: `task-tag-${index + 1}`,
-            taskId: task.id,
-            tagId: `tag-${departmentSeeds[Math.floor(index / 5)].slug}`,
-        })),
-    );
-
-    await db.insert(comments).values(
-        departmentSeeds.flatMap((department, departmentIndex) =>
-            department.comments.map((body, index) => ({
-                id: `comment-${department.slug}-${index + 1}`,
-                taskId: `task-${department.slug}-${index + 1}`,
-                authorId: `user-${department.slug}-1`,
-                body,
-                createdAt: localDay(-3 + departmentIndex, 11 + index),
-                updatedAt: localDay(-1, 11 + index),
-            })),
-        ),
-    );
-
-    await db.insert(calendarEvents).values(
-        departmentSeeds.flatMap((department, departmentIndex) =>
-            department.tasks.map((title, index) => {
-                const startAt = localDay(index - 1, 9 + departmentIndex, 0);
-                return {
-                    id: `event-${department.slug}-${index + 1}`,
+            departmentId: teams[team].id,
+            color: teams[team].color,
+            ownerId: staff[owner].id,
+            startDate: createdAt,
+            dueDate: day(due, 18),
+            createdAt,
+            updatedAt,
+        }));
+        const records = portfolio.flatMap((project) =>
+            project.tasks.map(({ assignee, due, reviewer, blocker, note, ...task }, position) => {
+                const assigneeId = staff[assignee].id;
+                const reviewerId = reviewer ? staff[reviewer].id : null;
+                const row = {
+                    ...task,
                     workspaceId,
-                    departmentId: department.id,
-                    projectId: `project-${department.slug}-${index + 1}`,
-                    taskId: `task-${department.slug}-${index + 1}`,
-                    title: `Focus: ${title}`,
-                    description: `${department.name} focus block.`,
-                    startAt,
-                    endAt: new Date(
-                        startAt.getTime() + taskEstimates[index] * 60 * 1000,
-                    ),
-                    allDay: false,
-                    location: index % 2 === 0 ? "Zoom" : "Meeting room A",
-                    createdById: `user-${department.slug}-1`,
-                    createdAt: localDay(-10, 10),
-                    updatedAt: localDay(-1, 10),
-                };
-            }),
-        ),
-    );
-
-    const notificationTypes = [
-        "task_assigned",
-        "task_due",
-        "mention",
-        "ai",
-        "system",
-    ] as const;
-
-    await db.insert(notifications).values(
-        departmentSeeds.flatMap((department, departmentIndex) =>
-            department.tasks.map((title, index) => {
-                const createdAt = localDay(
-                    -(index + 1),
-                    9 + (departmentIndex % 8),
-                );
-                return {
-                    id: `notification-${department.slug}-${index + 1}`,
-                    userId: `user-${department.slug}-${index + 1}`,
-                    type: notificationTypes[index],
-                    title:
-                        index === 0
-                            ? `New task: ${title}`
-                            : index === 1
-                              ? `Due soon: ${title}`
-                              : index === 2
-                                ? `Mentioned in ${title}`
-                                : index === 3
-                                  ? `AI plan ready for ${department.name}`
-                                  : `Workspace update for ${department.name}`,
-                    body: `${title} — ${department.name}.`,
-                    entityType: "task",
-                    entityId: `task-${department.slug}-${index + 1}`,
-                    readAt: index % 3 === 0 ? localDay(-(index + 1), 12) : null,
+                    projectId: project.id,
+                    departmentId: teams[project.team].id,
+                    creatorId: staff[project.owner].id,
+                    assigneeId,
+                    reviewerId,
+                    requiresReview: reviewerId !== null,
+                    submittedAt: reviewerId ? updatedAt : null,
+                    blockReason: blocker,
+                    blockedAt: blocker ? updatedAt : null,
+                    blockedById: blocker ? assigneeId : null,
+                    startDate: day(-7, 9),
+                    dueDate: day(due, 18),
+                    position,
+                    completedAt: task.status === "completed" ? day(due, 15) : null,
                     createdAt,
+                    updatedAt,
                 };
+                return { row, note, tagId: `tag-${project.team}` };
             }),
-        ),
-    );
+        );
+        const calendarRows = meetings.map(({ id, project, host, title, offset, hour, minutes }) => {
+            const startAt = day(offset, hour);
+            return {
+                id,
+                workspaceId,
+                projectId: project,
+                departmentId: teams[staff[host].team].id,
+                createdById: staff[host].id,
+                title,
+                startAt,
+                endAt: new Date(startAt.getTime() + minutes * 60_000),
+                createdAt,
+                updatedAt,
+            };
+        });
 
-    await db.insert(notifications).values(
-        departmentSeeds.map((department, index) => ({
-            id: `notification-demo-${index + 1}`,
-            userId: demoUserId,
-            type: notificationTypes[index],
-            title:
-                index === 0
-                    ? "Welcome to TaskFlow AI"
-                    : index === 1
-                      ? `Weekly ${department.name} digest is ready`
-                      : index === 2
-                        ? `New mention in ${department.name}`
-                        : index === 3
-                          ? `AI plan ready for ${department.name}`
-                          : `Workspace update for ${department.name}`,
-            body: `${department.name} has fresh activity in TaskFlow HQ.`,
-            entityType: "department",
-            entityId: department.id,
-            readAt: index === 0 ? new Date(Date.now() - 3_600_000) : null,
-            createdAt: new Date(Date.now() - (index * 26 + 2) * 3_600_000),
-        })),
-    );
-
-    await db.insert(aiConversations).values(
-        departmentSeeds.map((department) => ({
-            id: `ai-conversation-${department.slug}`,
-            workspaceId,
-            userId: `user-${department.slug}-1`,
-            title: `${department.name} weekly planning`,
-            model: "taskflow-rules-v1",
-            createdAt: localDay(-5, 10),
-            updatedAt: localDay(-1, 10),
-        })),
-    );
-
-    await db.insert(aiMessages).values(
-        departmentSeeds.flatMap((department) => [
-            {
-                id: `ai-message-${department.slug}-1`,
-                conversationId: `ai-conversation-${department.slug}`,
-                role: "system" as const,
-                content:
-                    "Ты — TaskFlow AI, помощник по планированию задач. Отвечай кратко, опирайся на данные рабочего пространства.",
-                createdAt: localDay(-5, 10),
-            },
-            {
-                id: `ai-message-${department.slug}-2`,
-                conversationId: `ai-conversation-${department.slug}`,
-                role: "user" as const,
-                content: `Собери план на неделю для отдела ${department.name}.`,
-                createdAt: localDay(-5, 10, 1),
-            },
-            {
-                id: `ai-message-${department.slug}-3`,
-                conversationId: `ai-conversation-${department.slug}`,
-                role: "assistant" as const,
-                content:
-                    "План собран по правилам приоритета и дедлайнов. " +
-                    "Сначала закрываем просроченные и срочные задачи, затем задачи с ближайшим сроком. " +
-                    "Рекомендую оставить буфер 15 минут между блоками.",
-                createdAt: localDay(-5, 10, 2),
-            },
-        ]),
-    );
-
-    const counts = {
-        departments: departmentSeeds.length,
-        users: userRows.length + 1,
-        workspaces: 1,
-        projects: projectRows.length,
-        tasks: taskRows.length,
-        comments: departmentSeeds.length * 5,
-        calendarEvents: departmentSeeds.length * 5,
-        notifications: departmentSeeds.length * 5 + 5,
-        aiConversations: departmentSeeds.length,
-    };
-
-    console.log("Seed complete:", counts);
-    console.log("Demo login: demo@taskflow.ai / Demo1234!");
-    console.log("Team login: any seeded email / Password123!");
+        console.log("Replacing TaskFlowAI data with the Mayak web studio demo...");
+        await client.execute("PRAGMA foreign_keys = ON");
+        await db.batch([
+            db.delete(authAttempts),
+            ...resetTables.map((table) => db.delete(table)),
+            db.insert(departments).values(departmentRows.map((team) => ({
+                ...team, createdAt, updatedAt,
+            }))),
+            db.insert(users).values(people.map<typeof users.$inferInsert>(({ team, scope, manager, ...person }) => ({
+                ...person,
+                departmentId: teams[team].id,
+                role: manager === null ? "admin" : scope === "self" ? "member" : "manager",
+                passwordHash: manager === null ? ownerHash : teamHash,
+                createdAt,
+                updatedAt,
+            }))),
+            db.insert(workspaces).values({
+                id: workspaceId,
+                name: "Веб-студия «Маяк»",
+                slug: "mayak-web-studio",
+                ownerId: staff.founder.id,
+                plan: "business",
+                createdAt,
+                updatedAt,
+            }),
+            db.update(departments).set({ workspaceId }),
+            db.insert(workspaceMembers).values(people.map<typeof workspaceMembers.$inferInsert>(({ id, manager, scope }) => ({
+                workspaceId,
+                userId: id,
+                role: manager === null ? "owner" : "member",
+                accessScope: scope,
+                managerUserId: manager === null ? null : staff[manager].id,
+                joinedAt: createdAt,
+            }))),
+            db.insert(userSettings).values(people.map(({ id }) => ({ userId: id, updatedAt }))),
+            db.insert(projects).values(projectRows),
+            db.insert(tags).values(Object.entries(teams).map(([team, details]) => ({
+                id: `tag-${team}`,
+                workspaceId,
+                name: details.name,
+                color: details.color,
+                createdAt,
+            }))),
+            db.insert(tasks).values(records.map(({ row }) => row)),
+            db.insert(taskTags).values(records.map(({ row, tagId }) => ({
+                taskId: row.id, tagId,
+            }))),
+            db.insert(taskDependencies).values([
+                { taskId: "task-engineering-1", dependsOnId: "task-engineering-5" },
+                { taskId: "task-engineering-2", dependsOnId: "task-engineering-1" },
+                { taskId: "task-operations-3", dependsOnId: "task-operations-2" },
+            ]),
+            db.insert(taskActivity).values(records.map(({ row }) => ({
+                taskId: row.id, actorId: row.creatorId, action: "created", createdAt,
+            }))),
+            db.insert(comments).values(records.flatMap(({ row, note }) => note ? [{
+                taskId: row.id, authorId: row.assigneeId, body: note, createdAt: updatedAt, updatedAt,
+            }] : [])),
+            db.insert(taskActionRequests).values(records.flatMap(({ row, note }) => row.reviewerId ? [{
+                taskId: row.id,
+                targetUserId: row.reviewerId,
+                requestedById: row.assigneeId,
+                kind: "review" as const,
+                reason: note ?? "",
+                createdAt: updatedAt,
+            }] : [])),
+            db.insert(notifications).values(records.filter(({ row }) => row.status !== "completed").map<typeof notifications.$inferInsert>(({ row }) => ({
+                id: row.id.replace("task-", "notification-"),
+                userId: row.assigneeId,
+                type: "task_assigned",
+                title: "Вам назначена задача",
+                body: row.title,
+                entityType: "task",
+                entityId: row.id,
+                createdAt,
+            }))),
+            db.insert(calendarEvents).values(calendarRows),
+            db.insert(aiConversations).values({
+                id: "ai-conversation-engineering",
+                workspaceId,
+                userId: staff.techLead.id,
+                title: "Подготовка к демо кабинета «Север»",
+                createdAt: updatedAt,
+                updatedAt,
+            }),
+            db.insert(aiMessages).values([
+                {
+                    conversationId: "ai-conversation-engineering",
+                    role: "user",
+                    content: "Что показать на демо кабинета «Север»?",
+                    createdAt: updatedAt,
+                },
+                {
+                    conversationId: "ai-conversation-engineering",
+                    role: "assistant",
+                    content: "Покажите историю отправлений, фильтры и создание заявки. Для проверки ролевого доступа подготовьте двух пользователей из разных организаций.",
+                    createdAt: new Date(updatedAt.getTime() + 1000),
+                },
+            ]),
+        ]);
+        const { rows: violations } = await client.execute("PRAGMA foreign_key_check");
+        if (violations.length) throw new Error("Demo data failed the foreign key check");
+        console.log(`Seeded ${people.length} accounts, ${departmentRows.length} departments, ${projectRows.length} projects and ${records.length} tasks.`);
+        console.log(`Owner login: ${staff.founder.email} / ${demoPassword}`);
+        console.log(`Team login: any account from docs/test-accounts.md / ${teamPassword}`);
+    } finally {
+        client.close();
+    }
 }
 
 main().catch((error) => {
     console.error("Seed failed:", error);
-    process.exit(1);
+    process.exitCode = 1;
 });

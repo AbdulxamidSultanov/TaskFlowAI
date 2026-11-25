@@ -76,6 +76,25 @@ export function errorResponse(error: unknown) {
         );
     }
 
+    // Another process (the notification worker) held the SQLite write lock.
+    // busy_timeout plus publish-side retries make this rare; surface it as a
+    // retryable 503 instead of a generic 500.
+    if (
+        maybeSqlite?.code === "SQLITE_BUSY" ||
+        /database is locked|database is busy/i.test(maybeSqlite?.message ?? "")
+    ) {
+        return json(
+            {
+                error: {
+                    code: "DATABASE_BUSY",
+                    message:
+                        "База данных занята; повторите через пару секунд.",
+                },
+            },
+            {status: 503},
+        );
+    }
+
     console.error("[api]", error);
 
     return json(
