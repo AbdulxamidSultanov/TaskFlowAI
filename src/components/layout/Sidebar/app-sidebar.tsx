@@ -17,6 +17,7 @@ import {
     Sparkles,
     SquareCheck,
     Users,
+    Wand2,
     X,
 } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
@@ -42,6 +43,7 @@ const navItems = [
     { href: "/time-management", key: "timeManagement", icon: Clock },
     { href: "/analytics", key: "analytics", icon: ChartNoAxesColumn },
     { href: "/ai-assistant", key: "aiAssistant", icon: Sparkles },
+    { href: "/ai-workspace", key: "aiWorkspace", icon: Wand2 },
     { href: "/team", key: "team", icon: Users },
 ] as const;
 

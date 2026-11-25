@@ -104,7 +104,7 @@
         "dashboard": "Mening kunim",
         "tasks": "Vazifalar",
         "calendar": "Taqvim",
-        "aiAssistant": "AI yordamchi",
+        "aiAssistant": "AI chat",
         "analytics": "Tahlillar",
         "workspaces": "Ish maydonlari",
         "newProject": "Yangi loyiha",
@@ -116,7 +116,8 @@
         "team": "Jamoa",
         "timeManagement": "Vaqt boshqaruvi",
         "overview": "Umumiy ko‘rinish",
-        "teamControl": "Jamoa nazorati"
+        "teamControl": "Jamoa nazorati",
+        "aiWorkspace": "Vazifalar generatori"
     },
     "status": {
         "todo": "Bajarilishi kerak",
@@ -222,12 +223,12 @@
     "aiAssistant": {
         "eyebrow": "AVTONOM ORKESTRATSIYA",
         "engineLabel": "{name} mexanizmi",
-        "title": "AI yordamchi va aqlli vazifa rejalashtiruvchisi",
-        "description": "TaskFlowAI optimal ish tartibini tuzish uchun jamoa yuklamasi, to‘siqlar, muddatlar va bog‘liqliklarni tahlil qiladi.",
+        "title": "AI chat va kunlik reja",
+        "description": "Chatda fikr almashing va savol bering. Kunlik rejani alohida tuzishingiz mumkin.",
         "plannerStatus": "TaskFlow rejalashtiruvchisi {version} · {status}",
-        "promptPlaceholder": "TaskFlow AI’dan vazifalar tartibini o‘zgartirishni, to‘siqlarni tahlil qilishni yoki sprint rejasini tuzishni so‘rang...",
+        "promptPlaceholder": "Savol bering yoki muhokama mavzusini taklif qiling…",
         "suggestions": "Tavsiyalar",
-        "reprioritizeBlockers": "Shoshilinch to‘siqlar ustuvorligini oshirish",
+        "reprioritizeBlockers": "Bir nechta to‘siqdan qaysi birini avval hal qilish kerak?",
         "optimizeFocusBlocks": "Tushdan keyingi diqqat vaqtini optimallashtirish",
         "auditDependencies": "{sprint} bog‘liqliklarini tekshirish",
         "synthesizeWorkday": "{hours} soatlik ish kunini rejalashtirish",
@@ -272,7 +273,7 @@
         "planEmpty": "Vazifalar va mavjud vaqt asosida reja yarating.",
         "planError": "Rejani yaratib bo'lmadi",
         "send": "Yuborish",
-        "welcomeDescription": "Maqsadni yozing yoki maslahatni tanlang — yordamchi harakat rejasini taklif qiladi.",
+        "welcomeDescription": "G‘oyani muhokama qiling, muammoni tahlil qiling yoki vazifalaringiz haqida so‘rang.",
         "welcomeTitle": "Bugun qanday yordam beray?",
         "reasonHighPriority": "yuqori muhimlik",
         "reasonOverdue": "muddati o'tgan",
@@ -280,7 +281,11 @@
         "reasonNeedsUnblocking": "blokdan chiqarish kerak",
         "reasonNextBestFit": "keyingi eng mos",
         "planRationaleNote": "Reja qoidalar asosida tuziladi: avval shoshilinch va yuqori muhimlikdagi vazifalar, so'ng muddati eng yaqin vazifalar. Har bir vazifa o'z bahosini (yoki standart 45 daqiqa) oladi va bloklar orasida 10 daqiqa bufer qoladi.",
-        "durationHours": "{hours} soat {minutes} daq"
+        "durationHours": "{hours} soat {minutes} daq",
+        "automaticModel": "Avtomatik",
+        "modelLabel": "Chat modeli",
+        "chatNotConfigured": "Muhokama uchun administratordan AI provayderini sozlashni so‘rang.",
+        "chatUnavailable": "AI provayderi hozir javob bermayapti. Xabarni yana yuborib ko‘ring."
     },
     "settings": {
         "title": "Sozlamalar",
@@ -854,7 +859,10 @@
         "unassigned": "Tayinlanmagan",
         "deadline": "Muddat",
         "priority": "Muhimlik",
-        "estimate": "Baholash, daq"
+        "estimate": "Baholash, daq",
+        "pageTitle": "Vazifalar generatori",
+        "pageDescription": "Qanday vazifalar kerakligini yozing. AI qoralamalar tayyorlaydi — nashr etishdan oldin ularni tekshiring va tahrirlang.",
+        "pageEyebrow": "AI WORKSPACE"
     },
     "timeManagement": {
         "title": "Vaqt boshqaruvi",
@@ -1019,7 +1027,9 @@
         "actionKinds": {
             "review": "Natijani tekshirish kerak",
             "response": "Javob talab qilinadi",
-            "unblock": "Blokni yechishga yordam kerak"
+            "unblock": "Blokni yechishga yordam kerak",
+            "requestDeadline": "Muddatni o‘zgartirish so‘rovi",
+            "requestConditions": "Shartlarni o‘zgartirish so‘rovi"
         }
     },
     "workflows": {
@@ -1059,6 +1069,13 @@
         "contributor": "Ishtirok: izohlar, fayllar va vaqt",
         "remove": "Kirishni olib tashlash",
         "add": "Qo‘shish / yangilash",
-        "retry": "Qayta urinish"
+        "retry": "Qayta urinish",
+        "requestDeadline": "Muddatni o‘zgartirishni so‘rash",
+        "requestConditions": "Vazifa shartlarini o‘zgartirishni so‘rash",
+        "requestReason": "So‘rov sababini tushuntiring (kamida 3 belgi)",
+        "newDeadline": "Taklif etilayotgan muddat",
+        "proposedConditions": "Qaysi shartlarni o‘zgartirishni so‘raysiz?",
+        "supervisorHint": "So‘rov rahbaringizga yuboriladi. U vazifani tahrirlashi va uning sahifasida javob berishi mumkin.",
+        "sendRequest": "So‘rov yuborish"
     }
 }

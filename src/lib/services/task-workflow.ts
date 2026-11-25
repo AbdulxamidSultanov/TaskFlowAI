@@ -1,4 +1,5 @@
-import { and, eq, inArray, isNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, eq, getTableColumns, inArray, isNull, sql } from "drizzle-orm";
 import { z } from "zod";
 import { db, type DbReader, type DbTransaction } from "@/db";
 import {
@@ -16,6 +17,7 @@ import {
 import { ApiError } from "@/lib/api/http";
 import { requireTaskPermission, taskPermissions } from "@/lib/auth/task-rights";
 import { requireTaskAccess } from "@/lib/auth/scope";
+import { userDayBounds } from "@/lib/time-zone";
 import type { AuthUser } from "@/lib/auth/session";
 
 export const workflowInput = z.object({
@@ -26,13 +28,38 @@ export const workflowInput = z.object({
         "block",
         "unblock",
         "request",
+        "requestDeadline",
+        "requestConditions",
         "resolve",
         "cancel",
     ]),
     reason: z.string().trim().max(2000).optional(),
     targetUserId: z.string().nullable().optional(),
     requestId: z.string().optional(),
+    requestedChange: z.string().trim().max(2000).optional(),
 });
+// A change request and its creation event share an ID. The request tracks delivery
+// and resolution; the event preserves the original proposal even after a reply.
+export function openTaskRequests(userId: string, workspaceId: string, taskId?: string) {
+    return db.select({
+        ...getTableColumns(taskActionRequests),
+        requestedChange: sql<string | null>`json_extract(${taskActivity.changes}, '$.requestedChange')`,
+    })
+        .from(taskActionRequests)
+        .innerJoin(tasks, eq(tasks.id, taskActionRequests.taskId))
+        .leftJoin(taskActivity, and(
+            eq(taskActivity.id, taskActionRequests.id),
+            eq(taskActivity.taskId, taskActionRequests.taskId),
+            eq(taskActivity.action, sql`'workflow.' || ${taskActionRequests.kind}`),
+        ))
+        .where(and(
+            eq(tasks.workspaceId, workspaceId),
+            eq(taskActionRequests.targetUserId, userId),
+            isNull(taskActionRequests.resolvedAt),
+            taskId ? eq(taskActionRequests.taskId, taskId) : undefined,
+        ));
+}
+
 export async function actorFor(id: string, store: DbReader = db): Promise<AuthUser | null> {
     const [user] = await store
         .select()
@@ -102,7 +129,7 @@ export async function initialReviewer(
 export async function actionRecipient(
     userId: string,
     taskId: string,
-    action: "view" | "comment" | "review" = "view",
+    action: "view" | "comment" | "review" | "changeDeadline" | "edit" = "view",
     store: DbReader = db,
 ) {
     const actor = await actorFor(userId, store);
@@ -141,6 +168,8 @@ export async function applyTaskWorkflowInTransaction(
             "Reopen this task before changing its workflow",
             "TASK_CLOSED",
         );
+    const changeKind = input.action === "requestDeadline" || input.action === "requestConditions" ? input.action : undefined;
+    const changeRequestId = changeKind ? randomUUID() : undefined;
     let target: string | null = null;
     const forbidden = () => {
         throw new ApiError(403, "Action is not allowed", "FORBIDDEN");
@@ -201,6 +230,20 @@ export async function applyTaskWorkflowInTransaction(
                 "Task is not blocked",
                 "INVALID_TRANSITION",
             );
+    } else if (changeKind) {
+        if (!rights.comment || task.assigneeId !== user.id) forbidden();
+        target = await defaultSupervisor(task.workspaceId, user.id, tx);
+        if (!target || target === user.id)
+            throw new ApiError(422, "No supervisor available for this request", "SUPERVISOR_REQUIRED");
+        if (input.targetUserId && input.targetUserId !== target) forbidden();
+        if (input.action === "requestDeadline") {
+            const proposed = z.iso.date().safeParse(input.requestedChange);
+            if (!proposed.success || (task.startDate && proposed.data < userDayBounds(task.startDate, user.timezone).day))
+                throw new ApiError(422, "Choose a valid deadline on or after the task start date", "INVALID_DEADLINE");
+        } else if (!input.requestedChange || input.requestedChange.length < 3) {
+            throw new ApiError(422, "Describe the proposed change to the task", "CHANGE_REQUIRED");
+        }
+        await actionRecipient(target, id, input.action === "requestDeadline" ? "changeDeadline" : "edit", tx);
     } else if (input.action === "request") {
         if (!rights.comment) forbidden();
         target =
@@ -217,7 +260,7 @@ export async function applyTaskWorkflowInTransaction(
         if (!rights.delete) forbidden();
     }
     if (
-        ["block", "rework", "request"].includes(input.action) &&
+        (changeKind || ["block", "rework", "request"].includes(input.action)) &&
         (!input.reason || input.reason.length < 3)
     )
         throw new ApiError(
@@ -228,7 +271,7 @@ export async function applyTaskWorkflowInTransaction(
     const patch: Partial<typeof tasks.$inferInsert> = {
         updatedAt: new Date(),
     };
-    const closeKinds = (kinds: Array<"review" | "response" | "unblock">) =>
+    const closeKinds = (kinds: Array<typeof taskActionRequests.$inferSelect.kind>) =>
         tx
             .update(taskActionRequests)
             .set({ resolvedAt: new Date() })
@@ -259,7 +302,7 @@ export async function applyTaskWorkflowInTransaction(
         patch.submittedAt = new Date();
         patch.completedAt = task.requiresReview ? null : new Date();
         patch.reviewerId = target ?? task.reviewerId;
-        await closeKinds(["review"]);
+        await closeKinds(task.requiresReview ? ["review"] : ["review", "response", "unblock", "requestDeadline", "requestConditions"]);
         if (target)
             await tx
                 .insert(taskActionRequests)
@@ -275,7 +318,7 @@ export async function applyTaskWorkflowInTransaction(
         patch.completedAt = new Date();
         patch.reviewedAt = new Date();
         patch.reviewedById = user.id;
-        await closeKinds(["review", "response", "unblock"]);
+        await closeKinds(["review", "response", "unblock", "requestDeadline", "requestConditions"]);
     } else if (input.action === "rework") {
         patch.status = "in_progress";
         patch.submittedAt = null;
@@ -309,14 +352,15 @@ export async function applyTaskWorkflowInTransaction(
         patch.blockedById = null;
         patch.helperId = null;
         await closeKinds(["unblock"]);
-    } else if (input.action === "request") {
+    } else if (input.action === "request" || changeKind) {
         await tx
             .insert(taskActionRequests)
             .values({
                 taskId: id,
                 targetUserId: target!,
                 requestedById: user.id,
-                kind: "response",
+                kind: changeKind ?? "response",
+                id: changeRequestId,
                 reason: input.reason!,
             });
     } else if (input.action === "resolve") {
@@ -337,7 +381,7 @@ export async function applyTaskWorkflowInTransaction(
                 "Action request not found",
                 "NOT_FOUND",
             );
-        if (request.kind !== "response")
+        if (request.kind === "review" || request.kind === "unblock")
             throw new ApiError(
                 422,
                 "Use the review or unblock action",
@@ -359,7 +403,7 @@ export async function applyTaskWorkflowInTransaction(
     } else if (input.action === "cancel") {
         patch.status = "cancelled";
         patch.completedAt = null;
-        await closeKinds(["review", "response", "unblock"]);
+        await closeKinds(["review", "response", "unblock", "requestDeadline", "requestConditions"]);
     }
     await tx.update(tasks).set(patch).where(eq(tasks.id, id));
     if (["submit", "accept", "cancel"].includes(input.action))
@@ -394,11 +438,13 @@ export async function applyTaskWorkflowInTransaction(
         .values({
             taskId: id,
             actorId: user.id,
+            id: changeRequestId,
             action: `workflow.${input.action}`,
             changes: JSON.stringify({
                 reason: input.reason,
                 targetUserId: target,
-                requestId: input.requestId,
+                requestId: input.requestId ?? changeRequestId,
+                requestedChange: changeKind ? input.requestedChange : undefined,
             }),
         });
     return { updated: true };

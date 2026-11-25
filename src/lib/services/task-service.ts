@@ -3,8 +3,9 @@ import {
     applyTaskWorkflowInTransaction,
     initialReviewer,
     actionRecipient,
+    openTaskRequests,
 } from "./task-workflow";
-import { taskActionRequests, notifications } from "@/db/schema";
+import { notifications } from "@/db/schema";
 import { userDayBounds } from "@/lib/time-zone";
 import {
     and,
@@ -341,18 +342,7 @@ export async function getTaskDetail(id: string, user?: AuthUser) {
         helper: helper ?? null,
         blockedBy: blockedBy ?? null,
         permissions: user ? await taskPermissions(user, task) : undefined,
-        actionRequests: user
-            ? await db
-                  .select()
-                  .from(taskActionRequests)
-                  .where(
-                      and(
-                          eq(taskActionRequests.taskId, id),
-                          eq(taskActionRequests.targetUserId, user.id),
-                          sql`${taskActionRequests.resolvedAt} IS NULL`,
-                      ),
-                  )
-            : [],
+        actionRequests: user ? await openTaskRequests(user.id, task.workspaceId, id) : [],
         subtaskCount: subtasks.value,
         tags: taskTagRows,
         comments: commentRows,

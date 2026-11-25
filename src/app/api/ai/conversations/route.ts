@@ -1,7 +1,8 @@
-import {and, desc, eq} from "drizzle-orm";
+import {and, desc, eq, inArray} from "drizzle-orm";
 
 import {db} from "@/db";
-import {aiConversations, aiMessages} from "@/db/schema";
+import {aiConversations, userSettings} from "@/db/schema";
+import {resolveDefaultChatModel} from "@/lib/ai/chat";
 import {
     created,
     handleRoute,
@@ -9,7 +10,7 @@ import {
     parseBody,
 } from "@/lib/api/http";
 import {aiConversationCreateSchema} from "@/lib/api/schemas";
-import {requireWorkspaceMember} from "@/lib/auth/guards";
+import {getAccessibleWorkspaceIds, requireWorkspaceMember} from "@/lib/auth/guards";
 import {requireUser} from "@/lib/auth/session";
 
 export async function GET(request: Request) {
@@ -30,6 +31,8 @@ export async function GET(request: Request) {
         const conditions = [eq(aiConversations.userId, user.id)];
         if (workspaceId) {
             conditions.push(eq(aiConversations.workspaceId, workspaceId));
+        } else {
+            conditions.push(inArray(aiConversations.workspaceId, await getAccessibleWorkspaceIds(user)));
         }
 
         const items = await db
@@ -46,7 +49,18 @@ export async function POST(request: Request) {
     return handleRoute(async () => {
         const user = await requireUser();
         const input = await parseBody(request, aiConversationCreateSchema);
-        await requireWorkspaceMember(user, input.workspaceId);
+        await requireWorkspaceMember(user, input.workspaceId, ["owner", "admin", "member", "viewer"]);
+
+        const [settings] = await db
+            .select({aiModel: userSettings.aiModel})
+            .from(userSettings)
+            .where(eq(userSettings.userId, user.id))
+            .limit(1);
+
+        const resolvedModel = resolveDefaultChatModel(
+            input.model,
+            settings?.aiModel,
+        );
 
         const [conversation] = await db
             .insert(aiConversations)
@@ -54,16 +68,9 @@ export async function POST(request: Request) {
                 workspaceId: input.workspaceId,
                 userId: user.id,
                 title: input.title ?? "New AI conversation",
-                model: input.model ?? "taskflow-rules-v1",
+                model: resolvedModel,
             })
             .returning();
-
-        await db.insert(aiMessages).values({
-            conversationId: conversation.id,
-            role: "system",
-            content:
-                "Ты — TaskFlow AI, помощник по планированию задач. Отвечай кратко, опирайся на данные рабочего пространства.",
-        });
 
         return created(conversation);
     });

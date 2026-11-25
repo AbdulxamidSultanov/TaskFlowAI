@@ -767,7 +767,7 @@ export const taskActionRequests = sqliteTable(
             onDelete: "set null",
         }),
         kind: text("kind", {
-            enum: ["review", "response", "unblock"],
+            enum: ["review", "response", "unblock", "requestDeadline", "requestConditions"],
         }).notNull(),
         reason: text("reason").notNull(),
         createdAt: createdAt(),

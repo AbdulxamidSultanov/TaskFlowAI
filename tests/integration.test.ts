@@ -974,6 +974,41 @@ test("an explicit response request appears in my day and requires an actual resp
         ),
     );
 });
+test("assignees can ask their supervisor to change a deadline or task conditions", async () => {
+    const { applyTaskWorkflow } = await import("../src/lib/services/task-workflow");
+    const { getDayBoard } = await import("../src/lib/services/day-board");
+    const task = await taskService.createTask(manager, {
+        projectId, title: "Change request", assigneeId: employee.id,
+        startDate: "2027-04-01T00:00:00Z", dueDate: "2027-04-10T00:00:00Z", description: "Original conditions",
+    });
+    assert.ok(task);
+    const deadline = { action: "requestDeadline", requestedChange: "2027-04-12", reason: "Supplier delivery was delayed" };
+    await assert.rejects(applyTaskWorkflow(manager, task.id, deadline), { code: "FORBIDDEN" });
+    await assert.rejects(applyTaskWorkflow(employee, task.id, { ...deadline, targetUserId: other.id }), { code: "FORBIDDEN" });
+    await assert.rejects(applyTaskWorkflow(employee, task.id, { ...deadline, reason: "  " }), { code: "REASON_REQUIRED" });
+    for (const requestedChange of ["2027-02-31", "2027-03-31", ""]) {
+        await assert.rejects(applyTaskWorkflow(employee, task.id, { ...deadline, requestedChange }), { code: "INVALID_DEADLINE" });
+    }
+    await assert.rejects(applyTaskWorkflow(employee, task.id, { ...deadline, action: "requestConditions", requestedChange: " " }), { code: "CHANGE_REQUIRED" });
+    await assert.rejects(applyTaskWorkflow(manager, task.id, { action: "request", targetUserId: employee.id, reason: " " }), { code: "REASON_REQUIRED" });
+    await applyTaskWorkflow(employee, task.id, deadline);
+    await applyTaskWorkflow(employee, task.id, { action: "requestConditions", requestedChange: "Allow a PDF instead of a printout", reason: "Printer is unavailable" });
+
+    const card = (await getDayBoard(manager, { workspaceId })).groups.action?.find((item) => item.id === task.id);
+    assert.ok(card);
+    assert.equal(card.actions.length, 2);
+    const incoming = card.actions.find((item) => item.kind === "requestDeadline");
+    assert.equal(incoming?.reason, deadline.reason);
+    assert.equal(incoming.requestedChange, deadline.requestedChange);
+    assert.equal(incoming.targetUserId, manager.id);
+    assert.equal(card.actions.find((item) => item.kind === "requestConditions")?.requestedChange, "Allow a PDF instead of a printout");
+    assert.equal(card.dueDate?.toISOString().slice(0, 10), "2027-04-10");
+    assert.equal(card.description, "Original conditions");
+    const response = { action: "resolve", requestId: incoming.id, reason: "Approved, I will update the schedule" };
+    await assert.rejects(applyTaskWorkflow(employee, task.id, response), { code: "NOT_FOUND" });
+    await applyTaskWorkflow(manager, task.id, response);
+    await assert.rejects(applyTaskWorkflow(manager, task.id, response), { code: "NOT_FOUND" });
+});
 test("nested reporting teams are visible, neighboring teams and leadership remain hidden", async () => {
     const { updateReportingLine } = await import(
         "../src/lib/services/organization"

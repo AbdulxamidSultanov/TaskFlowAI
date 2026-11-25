@@ -2,7 +2,8 @@ import type { Task } from "@/lib/redux/types";
 import type { TaskPermissions } from "@/lib/auth/task-rights";
 export type TaskActionRequest = {
     id: string;
-    kind: "review" | "response" | "unblock";
+    kind: "review" | "response" | "unblock" | "requestDeadline" | "requestConditions";
+    requestedChange: string | null;
     reason: string;
     targetUserId: string;
     createdAt: string;
@@ -36,9 +37,12 @@ export type WorkflowCommand = {
         | "block"
         | "unblock"
         | "request"
+        | "requestDeadline"
+        | "requestConditions"
         | "resolve"
         | "cancel";
     reason?: string;
+    requestedChange?: string;
     targetUserId?: string | null;
     requestId?: string;
 };

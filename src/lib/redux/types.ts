@@ -692,6 +692,7 @@ export type AiConversationCreateInput = {
 };
 
 export type AiMessageCreateInput = {
+    model?: string;
     content: string;
 };
 

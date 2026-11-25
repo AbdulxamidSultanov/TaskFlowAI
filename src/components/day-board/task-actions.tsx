@@ -2,7 +2,7 @@
 import { useState } from "react";
 import { useTranslations } from "next-intl";
 import { Button } from "@/components/ui/button";
-import { Select, Textarea } from "@/components/ui/input";
+import { Input, Select, Textarea } from "@/components/ui/input";
 import { Modal } from "@/components/ui/modal";
 import { useToast } from "@/components/ui/toast";
 import {
@@ -38,6 +38,7 @@ export function TaskActions({
     const [command, setCommand] = useState<WorkflowCommand | null>(null);
     const [reason, setReason] = useState("");
     const [target, setTarget] = useState("");
+    const [requestedChange, setRequestedChange] = useState("");
     const { data: participants } = useTaskParticipantsQuery(task.id, {
         skip: !command || !["block", "request"].includes(command.action),
     });
@@ -47,7 +48,8 @@ export function TaskActions({
     const actions = task.actions ?? task.actionRequests ?? [];
     const open = (action: WorkflowCommand) => {
         setReason("");
-        setTarget("");
+        setRequestedChange("");
+        setTarget(action.action === "request" && task.assigneeId !== actorId ? task.assigneeId ?? "" : "");
         setCommand(action);
     };
     const execute = async (data: WorkflowCommand) => {
@@ -59,9 +61,9 @@ export function TaskActions({
             toast.error(getApiErrorMessage(e, t("error")));
         }
     };
-    const needsReason =
-        command &&
-        ["block", "rework", "request", "resolve"].includes(command.action);
+    const changeRequest = command?.action === "requestDeadline" || command?.action === "requestConditions";
+    const needsReason = changeRequest || (command && ["block", "rework", "request", "resolve"].includes(command.action));
+    const tKinds = useTranslations("dayBoard.actionKinds");
     if (!p || closed) return null;
     return (
         <div className="space-y-2">
@@ -122,6 +124,16 @@ export function TaskActions({
                         {t("cancel")}
                     </Button>
                 ) : null}
+                {p.comment && actorId === task.assigneeId ? (
+                    <>
+                        <Button size="sm" variant="outline" onClick={() => open({ action: "requestDeadline" })}>
+                            {t("requestDeadline")}
+                        </Button>
+                        <Button size="sm" variant="outline" onClick={() => open({ action: "requestConditions" })}>
+                            {t("requestConditions")}
+                        </Button>
+                    </>
+                ) : null}
                 {p.comment ? (
                     <Button
                         size="sm"
@@ -131,21 +143,19 @@ export function TaskActions({
                         {t("request")}
                     </Button>
                 ) : null}
-                {actions
-                    .filter((a) => a.kind === "response")
-                    .map((a) => (
-                        <Button
-                            key={a.id}
-                            size="sm"
-                            variant="outline"
-                            onClick={() =>
-                                open({ action: "resolve", requestId: a.id })
-                            }
-                        >
+            </div>
+            {actions.map((request) => (
+                <div key={request.id} className="space-y-1 rounded-lg bg-primary/5 p-2 text-sm">
+                    <strong>{tKinds(request.kind)}</strong>
+                    {request.requestedChange && <p className="whitespace-pre-wrap break-words">{request.requestedChange}</p>}
+                    {request.reason && <p className="whitespace-pre-wrap break-words">{request.reason}</p>}
+                    {request.kind !== "review" && request.kind !== "unblock" && (
+                        <Button size="sm" variant="outline" onClick={() => open({ action: "resolve", requestId: request.id })}>
                             {t("respond")}
                         </Button>
-                    ))}
-            </div>
+                    )}
+                </div>
+            ))}
             <Modal
                 open={!!command}
                 onClose={() => setCommand(null)}
@@ -187,19 +197,36 @@ export function TaskActions({
                             </p>
                         </label>
                     ) : null}
+                    {changeRequest && (
+                        <>
+                            <p className="text-sm text-text-secondary">{t("supervisorHint")}</p>
+                            <label className="block text-sm">
+                                {command?.action === "requestDeadline" ? t("newDeadline") : t("proposedConditions")}
+                                {command?.action === "requestDeadline" ? (
+                                    <Input type="date" value={requestedChange} required
+                                        onChange={(event) => setRequestedChange(event.target.value)} />
+                                ) : (
+                                    <Textarea value={requestedChange} maxLength={2000} required
+                                        onChange={(event) => setRequestedChange(event.target.value)} />
+                                )}
+                            </label>
+                        </>
+                    )}
                     <label className="block text-sm">
-                        {t("reason")}
+                        {t(changeRequest || command?.action === "request" ? "requestReason" : "reason")}
                         <Textarea
                             value={reason}
+                            required={Boolean(needsReason)}
                             maxLength={2000}
                             onChange={(e) => setReason(e.target.value)}
-                            autoFocus
+                            autoFocus={!changeRequest}
                         />
                     </label>
                     <Button
                         loading={state.isLoading}
                         disabled={Boolean(
-                            needsReason && reason.trim().length < 3,
+                            (needsReason && reason.trim().length < 3) ||
+                            (changeRequest && requestedChange.trim().length < 3),
                         )}
                         onClick={() =>
                             command &&
@@ -207,10 +234,11 @@ export function TaskActions({
                                 ...command,
                                 reason: reason.trim(),
                                 targetUserId: target || null,
+                                requestedChange: changeRequest ? requestedChange.trim() : undefined,
                             })
                         }
                     >
-                        {t("save")}
+                        {t(changeRequest || command?.action === "request" ? "sendRequest" : "save")}
                     </Button>
                 </div>
             </Modal>

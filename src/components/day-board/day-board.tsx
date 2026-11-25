@@ -208,21 +208,6 @@ export function DayBoard({ supervisor = false }: { supervisor?: boolean }) {
                                                     {t("reviewHint")}
                                                 </p>
                                             ) : null}
-                                            {task.actions.map((action) => (
-                                                <p
-                                                    key={action.id}
-                                                    className="rounded-lg bg-primary/5 p-2 text-xs"
-                                                >
-                                                    <strong>
-                                                        {t(
-                                                            `actionKinds.${action.kind}`,
-                                                        )}
-                                                    </strong>
-                                                    {action.reason
-                                                        ? `: ${action.reason}`
-                                                        : ""}
-                                                </p>
-                                            ))}
                                             <p className="text-xs text-text-muted">
                                                 {t("next")}:{" "}
                                                 {task.status === "blocked"
