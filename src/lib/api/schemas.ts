@@ -273,6 +273,7 @@ export const aiConversationCreateSchema = z.object({
 });
 
 export const aiMessageCreateSchema = z.object({
+    model: z.string().trim().max(80).optional(),
     content: z.string().trim().min(1).max(12000),
 });
 

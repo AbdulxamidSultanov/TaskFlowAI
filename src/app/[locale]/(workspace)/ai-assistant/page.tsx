@@ -11,7 +11,6 @@ import {
 } from "lucide-react";
 import {useEffect, useMemo, useRef, useState} from "react";
 
-import {AiTaskGenerator} from "@/components/ai/ai-task-generator";
 import {Avatar} from "@/components/ui/avatar";
 import {Badge, priorityTone, statusTone} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
@@ -45,6 +44,11 @@ const suggestions = [
 ] as const;
 
 export default function AiAssistantPage() {
+    const {workspace} = useWorkspace();
+    return <WorkspaceAssistant key={workspace.id} />;
+}
+
+function WorkspaceAssistant() {
     const t = useTranslations("aiAssistant");
     const tCommon = useTranslations("common");
     const tPriority = useTranslations("priority");
@@ -66,22 +70,24 @@ export default function AiAssistantPage() {
             .map((item) => reasonLabels[item] ?? item)
             .join(", ");
 
-    const {data: conversations, isLoading: conversationsLoading} =
+    const {currentData: conversations, isLoading: conversationsLoading} =
         useGetAiConversationsQuery({workspaceId: workspace.id});
     const [selectedId, setSelectedId] = useState<string | null>(null);
+    const [chatModel, setChatModel] = useState("");
     const [input, setInput] = useState("");
     const [minutes, setMinutes] = useState("480");
 
-    const {data: messages, isLoading: messagesLoading} = useGetAiMessagesQuery(
+    const {currentData: messages, isFetching: messagesLoading} = useGetAiMessagesQuery(
         {conversationId: selectedId ?? ""},
         {skip: !selectedId},
     );
-    const {data: plans} = useGetAiPlansQuery({workspaceId: workspace.id});
+    const {currentData: plans} = useGetAiPlansQuery({workspaceId: workspace.id});
 
     const [createConversation, createState] = useCreateAiConversationMutation();
     const [sendMessage, sendState] = useSendAiMessageMutation();
     const [createPlan, planState] = useCreateAiPlanMutation();
-
+    const sending = useRef(false);
+    const busy = sendState.isLoading || createState.isLoading;
     const bottomRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
@@ -148,6 +154,7 @@ export default function AiAssistantPage() {
             const conversation = await createConversation({
                 workspaceId: workspace.id,
                 title: title ?? t("newConversationTitle"),
+                model: chatModel || undefined,
             }).unwrap();
             setSelectedId(conversation.id);
             return conversation;
@@ -159,25 +166,24 @@ export default function AiAssistantPage() {
 
     const send = async (text: string) => {
         const content = text.trim();
-        if (!content || sendState.isLoading) return;
-
-        let conversationId = selectedId;
-        if (!conversationId) {
-            const conversation = await startConversation(
-                content.slice(0, 80),
-            );
-            conversationId = conversation?.id ?? null;
-        }
-        if (!conversationId) return;
-
-        setInput("");
+        if (!content || busy || sending.current) return;
+        sending.current = true;
         try {
+            const conversationId = selectedId ?? (await startConversation(content.slice(0, 80)))?.id;
+            if (!conversationId) return;
             await sendMessage({
                 conversationId,
-                data: {content},
+                data: {content, model: chatModel || undefined},
             }).unwrap();
+            setInput((current) => current.trim() === content ? "" : current);
         } catch (error) {
-            toast.error(getApiErrorMessage(error, t("messageError")));
+            const code = (error as {data?: {error?: {code?: string}}})?.data?.error?.code;
+            const message = code === "CHAT_NOT_CONFIGURED" ? t("chatNotConfigured")
+                : code === "CHAT_UNAVAILABLE" ? t("chatUnavailable")
+                : getApiErrorMessage(error, t("messageError"));
+            toast.error(message);
+        } finally {
+            sending.current = false;
         }
     };
 
@@ -220,8 +226,6 @@ export default function AiAssistantPage() {
                 }
             />
 
-            <AiTaskGenerator />
-
             <div className="grid gap-4 xl:grid-cols-[240px_minmax(0,1fr)_360px]">
                 <Card className="flex max-h-[70dvh] flex-col p-3 xl:max-h-[calc(100dvh-13rem)]">
                     <div className="mb-2 flex items-center justify-between px-1">
@@ -232,7 +236,7 @@ export default function AiAssistantPage() {
                             size="icon"
                             variant="ghost"
                             aria-label={t("newChat")}
-                            disabled={createState.isLoading || !canEdit}
+                            disabled={busy}
                             onClick={() => void startConversation()}
                         >
                             <MessageSquarePlus size={16} />
@@ -254,7 +258,8 @@ export default function AiAssistantPage() {
                                 <button
                                     key={conversation.id}
                                     type="button"
-                                    onClick={() => setSelectedId(conversation.id)}
+                                    disabled={busy}
+                                    onClick={() => { setChatModel(""); setSelectedId(conversation.id); }}
                                     className={cn(
                                         "w-full rounded-lg px-2.5 py-2 text-left transition-colors",
                                         conversation.id === selectedId
@@ -278,7 +283,7 @@ export default function AiAssistantPage() {
                 </Card>
 
                 <div className="flex min-h-[60dvh] flex-col overflow-hidden rounded-2xl border border-border bg-surface shadow-sm xl:max-h-[calc(100dvh-13rem)]">
-                    <div className="flex items-center justify-between gap-2 border-b border-border px-4 py-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border px-4 py-3">
                         <div className="min-w-0">
                             <p className="truncate text-sm font-semibold text-text-primary">
                                 {selectedConversation?.title ??
@@ -288,11 +293,36 @@ export default function AiAssistantPage() {
                                 {t("model", {
                                     model:
                                         selectedConversation?.model ??
-                                        "taskflow-rules-v1",
+                                        (chatModel || t("automaticModel")),
                                 })}
                             </p>
                         </div>
-                        <Badge tone="accent">{t("syncedAgenda")}</Badge>
+                        <div className="flex items-center gap-2">
+                            <Select
+                                value={chatModel}
+                                onChange={(event) =>
+                                    setChatModel(event.target.value)
+                                }
+                                aria-label={t("modelLabel")}
+                                className="h-8 w-auto text-xs"
+                                disabled={busy}
+                            >
+                                <option value="">{t("automaticModel")}</option>
+                                <option value="gemini-3.5-flash-lite">
+                                    Gemini 3.5 Flash Lite (Free)
+                                </option>
+                                <option value="gemini-3.1-flash-lite">
+                                    Gemini 3.1 Flash Lite (Free)
+                                </option>
+                                <option value="gemini-3.5-flash">
+                                    Gemini 3.5 Flash (Free)
+                                </option>
+                                <option value="taskflow-rules-v1">
+                                    TaskFlow Rules v1
+                                </option>
+                            </Select>
+                            <Badge tone="accent">{t("syncedAgenda")}</Badge>
+                        </div>
                     </div>
 
                     <div className="min-h-0 flex-1 space-y-4 overflow-y-auto px-4 py-4">
@@ -308,7 +338,7 @@ export default function AiAssistantPage() {
                                     {t("welcomeDescription")}
                                 </p>
                             </div>
-                        ) : messagesLoading ? (
+                        ) : messagesLoading && !messages ? (
                             <PageLoader label={tCommon("loading")} />
                         ) : visibleMessages.length === 0 ? (
                             <div className="flex h-full flex-col items-center justify-center text-center">
@@ -401,7 +431,7 @@ export default function AiAssistantPage() {
                                 <button
                                     key={key}
                                     type="button"
-                                    disabled={!canEdit || sendState.isLoading}
+                                    disabled={busy}
                                     onClick={() => void send(suggestionText(key))}
                                     className="rounded-full border border-border bg-surface-elevated px-2.5 py-1 text-[11px] font-medium text-text-secondary transition-colors hover:border-accent/40 hover:text-accent disabled:opacity-50"
                                 >
@@ -416,10 +446,11 @@ export default function AiAssistantPage() {
                                 placeholder={t("promptPlaceholder")}
                                 rows={1}
                                 className="min-h-10 flex-1 py-2.5"
-                                disabled={!canEdit}
+                                maxLength={12000}
                                 onKeyDown={(event) => {
                                     if (
                                         event.key === "Enter" &&
+                                        !event.nativeEvent.isComposing &&
                                         !event.shiftKey
                                     ) {
                                         event.preventDefault();
@@ -431,9 +462,7 @@ export default function AiAssistantPage() {
                                 size="icon"
                                 aria-label={t("send")}
                                 disabled={
-                                    !input.trim() ||
-                                    sendState.isLoading ||
-                                    !canEdit
+                                    !input.trim() || busy
                                 }
                                 onClick={() => void send(input)}
                             >

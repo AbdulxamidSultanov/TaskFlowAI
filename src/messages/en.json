@@ -104,7 +104,7 @@
         "dashboard": "My day",
         "tasks": "Tasks",
         "calendar": "Calendar",
-        "aiAssistant": "AI Assistant",
+        "aiAssistant": "AI chat",
         "analytics": "Analytics",
         "workspaces": "Workspaces",
         "newProject": "New Project",
@@ -116,7 +116,8 @@
         "team": "Team",
         "timeManagement": "Time management",
         "overview": "Overview",
-        "teamControl": "Team control"
+        "teamControl": "Team control",
+        "aiWorkspace": "Task generator"
     },
     "status": {
         "todo": "Todo",
@@ -222,12 +223,12 @@
     "aiAssistant": {
         "eyebrow": "AUTONOMOUS ORCHESTRATION",
         "engineLabel": "{name} Engine",
-        "title": "AI Assistant & Intelligent Task Planner",
-        "description": "TaskFlowAI analyzes team capacity, blockers, deadlines, and dependencies to craft the optimal execution flow.",
+        "title": "AI chat and daily plan",
+        "description": "Discuss ideas and ask questions in chat. You can also create a separate plan for the day.",
         "plannerStatus": "TaskFlow Planner {version} · {status}",
-        "promptPlaceholder": "Ask TaskFlow AI to re-sequence tasks, analyze blockers, or generate a sprint plan...",
+        "promptPlaceholder": "Ask a question or suggest a topic…",
         "suggestions": "Suggestions",
-        "reprioritizeBlockers": "Re-prioritize urgent blockers",
+        "reprioritizeBlockers": "How should I prioritize competing blockers?",
         "optimizeFocusBlocks": "Optimize afternoon focus blocks",
         "auditDependencies": "Audit {sprint} dependencies",
         "synthesizeWorkday": "Synthesize {hours}h work day",
@@ -272,7 +273,7 @@
         "planEmpty": "Generate a plan from your tasks and available time.",
         "planError": "Could not create the plan",
         "send": "Send",
-        "welcomeDescription": "Describe a goal or pick a prompt and the assistant will suggest a plan.",
+        "welcomeDescription": "Talk through an idea, explore a problem or ask about your tasks.",
         "welcomeTitle": "How can I help today?",
         "reasonHighPriority": "high priority",
         "reasonOverdue": "overdue",
@@ -280,7 +281,11 @@
         "reasonNeedsUnblocking": "needs unblocking",
         "reasonNextBestFit": "next best fit",
         "planRationaleNote": "The plan follows rules: urgent and high-priority tasks first, then tasks with the nearest due date. Each task gets its own estimate (or 45 minutes by default) with a 10-minute buffer between blocks.",
-        "durationHours": "{hours}h {minutes}m"
+        "durationHours": "{hours}h {minutes}m",
+        "automaticModel": "Automatic",
+        "modelLabel": "Chat model",
+        "chatNotConfigured": "Ask your administrator to configure an AI provider for discussions.",
+        "chatUnavailable": "The AI provider is unavailable. Please try sending your message again."
     },
     "settings": {
         "title": "Settings",
@@ -854,7 +859,10 @@
         "unassigned": "Unassigned",
         "deadline": "Deadline",
         "priority": "Priority",
-        "estimate": "Estimate, min"
+        "estimate": "Estimate, min",
+        "pageTitle": "Task generator",
+        "pageDescription": "Describe the tasks you need. AI prepares drafts — review and edit them before publishing.",
+        "pageEyebrow": "AI WORKSPACE"
     },
     "timeManagement": {
         "title": "Time management",
@@ -1019,7 +1027,9 @@
         "actionKinds": {
             "review": "Result review required",
             "response": "Response requested",
-            "unblock": "Help with a block requested"
+            "unblock": "Help with a block requested",
+            "requestDeadline": "Deadline change requested",
+            "requestConditions": "Change to task conditions requested"
         }
     },
     "workflows": {
@@ -1059,6 +1069,13 @@
         "contributor": "Contribute: comments, files and time",
         "remove": "Remove access",
         "add": "Add / update",
-        "retry": "Retry"
+        "retry": "Retry",
+        "requestDeadline": "Request a deadline change",
+        "requestConditions": "Request a change to task conditions",
+        "requestReason": "Explain why you are making this request (at least 3 characters)",
+        "newDeadline": "Proposed due date",
+        "proposedConditions": "Which conditions should change?",
+        "supervisorHint": "Your supervisor will receive this request and can edit the task and reply from its page.",
+        "sendRequest": "Send request"
     }
 }

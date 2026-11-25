@@ -1,9 +1,8 @@
-import { defaultSupervisor } from "./task-workflow";
-import { and, asc, eq, gte, inArray, isNull, lt, ne } from "drizzle-orm";
+import { defaultSupervisor, openTaskRequests } from "./task-workflow";
+import { and, asc, eq, gte, inArray, lt, ne } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "@/db";
 import {
-    taskActionRequests,
     taskParticipants,
     tasks,
     users,
@@ -36,15 +35,7 @@ export async function getDayBoard(
 ) {
     if (supervisor) await requireWorkspaceSupervisor(user, query.workspaceId);
     const { day, start, end } = userDayBounds(now, user.timezone);
-    const requests = await db
-        .select()
-        .from(taskActionRequests)
-        .where(
-            and(
-                eq(taskActionRequests.targetUserId, user.id),
-                isNull(taskActionRequests.resolvedAt),
-            ),
-        );
+    const requests = await openTaskRequests(user.id, query.workspaceId);
     const conditions = [
         await taskScope(user, query.workspaceId, false, !supervisor),
         ne(tasks.status, "completed"),
@@ -126,6 +117,7 @@ export async function getDayBoard(
                     kind: "review",
                     reason: "",
                     createdAt: task.submittedAt ?? task.updatedAt,
+                    requestedChange: null,
                     resolvedAt: null,
                 });
             if (
@@ -146,6 +138,7 @@ export async function getDayBoard(
                     kind: "unblock",
                     reason: task.blockReason ?? "",
                     createdAt: task.blockedAt ?? task.updatedAt,
+                    requestedChange: null,
                     resolvedAt: null,
                 });
             return {

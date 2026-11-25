@@ -6,6 +6,7 @@ import { join } from "node:path";
 import { randomBytes } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 import { createServer } from "node:net";
+import { createServer as createHttpServer } from "node:http";
 import { setTimeout as delay } from "node:timers/promises";
 const dir = mkdtempSync(join(tmpdir(), "taskflow-production-"));
 const env = {
@@ -13,10 +14,24 @@ const env = {
     DATABASE_URL: `file:${join(dir, "test.db")}`,
     FILE_STORAGE_PATH: join(dir, "uploads"),
     AUTH_SECRET: randomBytes(32).toString("hex"),
-    AI_MOCK: "1",
+    AI_MOCK: "0",
+    AI_CHAT_API_KEY: "smoke-test-key",
+    AI_CHAT_MODEL: "smoke-model",
+    AI_CHAT_FALLBACK_MODELS: "smoke-model",
 };
 let server;
+const chatCalls = [];
+let providerAvailable = true;
+const chatProvider = createHttpServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    chatCalls.push(JSON.parse(Buffer.concat(chunks).toString()).messages);
+    res.writeHead(providerAvailable ? 200 : 503, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ choices: [{ message: { content: "Let’s discuss the alternatives." } }] }));
+});
 try {
+    await new Promise((resolve) => chatProvider.listen(0, "127.0.0.1", resolve));
+    env.AI_CHAT_BASE_URL = `http://127.0.0.1:${chatProvider.address().port}`;
     for (const file of ["scripts/migrate.ts", "src/db/seed.ts"]) {
         const result = spawnSync(
             process.execPath,
@@ -138,6 +153,25 @@ try {
         ).status,
         403,
     );
+    const conversation = await request("/api/ai/conversations", {
+        cookie: employee, method: "POST", body: { workspaceId: "ws-taskflow-hq" },
+    });
+    assert.equal(conversation.status, 201, JSON.stringify(conversation.data));
+    const messages = `/api/ai/conversations/${conversation.data.data.id}/messages`;
+    const discuss = (content) => request(messages, { cookie: employee, method: "POST", body: { content } });
+    const first = await discuss("Could we move this task to next week?");
+    assert.equal(first.status, 201, JSON.stringify(first.data));
+    assert.equal(first.data.data.assistantMessage.content, "Let’s discuss the alternatives.");
+    assert.deepEqual(first.data.data.proposals, []);
+    assert.equal(chatCalls.length, 1);
+    providerAvailable = false;
+    const failed = await discuss("What are the alternatives?");
+    assert.equal(failed.data.error.code, "CHAT_UNAVAILABLE");
+    assert.equal((await request(messages, { cookie: employee })).data.data.length, 2);
+    providerAvailable = true;
+    assert.equal((await discuss("What are the alternatives?")).status, 201);
+    assert.deepEqual(chatCalls.at(-1).slice(1).map((m) => m.role), ["user", "assistant", "user"]);
+    assert.equal((await request(messages, { cookie: admin })).status, 403);
     const created = await request("/api/tasks", {
         cookie: admin,
         method: "POST",
@@ -352,6 +386,7 @@ try {
         "PASS: production startup + worker, scoped APIs, timers/reasons, reminders settings, Origin, revocation, password invalidation and new-owner workflow",
     );
 } finally {
+    chatProvider.close();
     if (server?.pid) {
         if (process.platform === "win32") {
             spawnSync("taskkill", ["/PID", String(server.pid), "/T", "/F"], {

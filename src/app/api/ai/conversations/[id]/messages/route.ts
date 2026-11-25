@@ -1,11 +1,15 @@
 import { taskScope } from "@/lib/auth/scope";
-import { and, asc, count, eq, lt, ne } from "drizzle-orm";
+import { and, asc, count, desc, eq, lt, ne } from "drizzle-orm";
 
 import { db } from "@/db";
-import { aiConversations, aiMessages, tasks } from "@/db/schema";
+import { aiConversations, aiMessages, tasks, userSettings } from "@/db/schema";
+import {
+    generateChatReply,
+    getAiChatStatus,
+    resolveDefaultChatModel,
+} from "@/lib/ai/chat";
 import { ApiError, created, handleRoute, ok, parseBody } from "@/lib/api/http";
 import { aiMessageCreateSchema } from "@/lib/api/schemas";
-import { assistantReply } from "@/lib/ai/planner";
 import { requireWorkspaceMember } from "@/lib/auth/guards";
 import { requireUser } from "@/lib/auth/session";
 
@@ -57,89 +61,137 @@ export async function POST(request: Request, { params }: Params) {
         const { id } = await params;
         const input = await parseBody(request, aiMessageCreateSchema);
         const conversation = await requireConversation(user.id, id);
-        await requireWorkspaceMember(user, conversation.workspaceId);
-
-        const [userMessage] = await db
-            .insert(aiMessages)
-            .values({
-                conversationId: id,
-                role: "user",
-                content: input.content,
-            })
-            .returning();
-
         const workspaceId = conversation.workspaceId;
+        await requireWorkspaceMember(user, workspaceId, ["owner", "admin", "member", "viewer"]);
+        const chatStatus = getAiChatStatus();
+        if (!chatStatus.configured && input.model !== "taskflow-rules-v1") {
+            throw new ApiError(503, "Configure the chat provider to start a discussion", "CHAT_NOT_CONFIGURED");
+        }
         const scope = await taskScope(user, workspaceId);
         const now = new Date();
-        const [openRows, overdueRows, completedRows, nextRows] =
-            await Promise.all([
-                db
-                    .select({ value: count() })
-                    .from(tasks)
-                    .where(
-                        and(
-                            scope,
-                            eq(tasks.workspaceId, workspaceId),
-                            ne(tasks.status, "completed"),
-                            ne(tasks.status, "cancelled"),
-                        ),
+        const [
+            openRows,
+            overdueRows,
+            completedRows,
+            upcomingRows,
+            historyRows,
+            settingsRows,
+        ] = await Promise.all([
+            db
+                .select({ value: count() })
+                .from(tasks)
+                .where(
+                    and(
+                        scope,
+                        eq(tasks.workspaceId, workspaceId),
+                        ne(tasks.status, "completed"),
+                        ne(tasks.status, "cancelled"),
                     ),
-                db
-                    .select({ value: count() })
-                    .from(tasks)
-                    .where(
-                        and(
-                            scope,
-                            eq(tasks.workspaceId, workspaceId),
-                            lt(tasks.dueDate, now),
-                            ne(tasks.status, "completed"),
-                            ne(tasks.status, "cancelled"),
-                        ),
+                ),
+            db
+                .select({ value: count() })
+                .from(tasks)
+                .where(
+                    and(
+                        scope,
+                        eq(tasks.workspaceId, workspaceId),
+                        lt(tasks.dueDate, now),
+                        ne(tasks.status, "completed"),
+                        ne(tasks.status, "cancelled"),
                     ),
-                db
-                    .select({ value: count() })
-                    .from(tasks)
-                    .where(
-                        and(
-                            scope,
-                            eq(tasks.workspaceId, workspaceId),
-                            eq(tasks.status, "completed"),
-                        ),
+                ),
+            db
+                .select({ value: count() })
+                .from(tasks)
+                .where(
+                    and(
+                        scope,
+                        eq(tasks.workspaceId, workspaceId),
+                        eq(tasks.status, "completed"),
                     ),
-                db
-                    .select({ title: tasks.title })
-                    .from(tasks)
-                    .where(
-                        and(
-                            scope,
-                            eq(tasks.workspaceId, workspaceId),
-                            ne(tasks.status, "completed"),
-                            ne(tasks.status, "cancelled"),
-                        ),
-                    )
-                    .orderBy(asc(tasks.dueDate))
-                    .limit(1),
-            ]);
+                ),
+            db
+                .select({
+                    title: tasks.title,
+                    priority: tasks.priority,
+                    status: tasks.status,
+                    dueDate: tasks.dueDate,
+                })
+                .from(tasks)
+                .where(
+                    and(
+                        scope,
+                        eq(tasks.workspaceId, workspaceId),
+                        ne(tasks.status, "completed"),
+                        ne(tasks.status, "cancelled"),
+                    ),
+                )
+                .orderBy(asc(tasks.dueDate))
+                .limit(5),
+            db
+                .select({
+                    role: aiMessages.role,
+                    content: aiMessages.content,
+                })
+                .from(aiMessages)
+                .where(eq(aiMessages.conversationId, id))
+                .orderBy(desc(aiMessages.createdAt))
+                .limit(20),
+            db
+                .select({ aiModel: userSettings.aiModel })
+                .from(userSettings)
+                .where(eq(userSettings.userId, user.id))
+                .limit(1),
+        ]);
 
-        const [assistantMessage] = await db
-            .insert(aiMessages)
-            .values({
-                conversationId: id,
-                role: "assistant",
-                content: assistantReply({
-                    open: openRows[0]?.value ?? 0,
-                    overdue: overdueRows[0]?.value ?? 0,
-                    completed: completedRows[0]?.value ?? 0,
-                    nextTask: nextRows[0]?.title,
-                }),
-            })
-            .returning();
+        const orderedHistory = [...historyRows].reverse();
+        // Respect an explicit model choice on the message first; otherwise if an
+        // older conversation was seeded with taskflow-rules-v1 while Google
+        // Gemini is configured, upgrade the reply to the live AI model.
+        const preferredModel =
+            input.model ??
+            (conversation.model === "taskflow-rules-v1" && chatStatus.configured
+                ? resolveDefaultChatModel(undefined, settingsRows[0]?.aiModel)
+                : conversation.model);
 
-        await db
-            .update(aiConversations)
-            .set({ updatedAt: new Date() })
-            .where(eq(aiConversations.id, id));
+        const reply = await generateChatReply({
+            userName: user.name,
+            preferredModel,
+            history: [...orderedHistory, { role: "user", content: input.content }],
+            taskSummary: {
+                open: openRows[0]?.value ?? 0,
+                overdue: overdueRows[0]?.value ?? 0,
+                completed: completedRows[0]?.value ?? 0,
+                nextTask: upcomingRows[0]?.title,
+                upcomingTasks: upcomingRows.map((row) => ({
+                    title: row.title,
+                    priority: row.priority,
+                    status: row.status,
+                    dueDate: row.dueDate
+                        ? row.dueDate.toISOString().slice(0, 10)
+                        : null,
+                })),
+            },
+        });
 
-        return created({ userMessage, assistantMessage });
+        if (reply.mode === "rules" && input.model !== "taskflow-rules-v1") {
+            throw new ApiError(503, "The chat provider is unavailable. Try again.", "CHAT_UNAVAILABLE");
+        }
+
+        const turn = await db.transaction(async (tx) => {
+            await requireWorkspaceMember(user, workspaceId, ["owner", "admin", "member", "viewer"], tx);
+            const [userMessage] = await tx.insert(aiMessages).values({
+                conversationId: id, role: "user", content: input.content,
+            }).returning();
+            const [assistantMessage] = await tx.insert(aiMessages).values({
+                conversationId: id, role: "assistant", content: reply.content,
+                createdAt: new Date(Math.max(Date.now(), userMessage.createdAt.getTime() + 1)),
+            }).returning();
+            await tx.update(aiConversations)
+                .set({ model: reply.model, updatedAt: assistantMessage.createdAt })
+                .where(eq(aiConversations.id, id));
+            return { userMessage, assistantMessage };
+        });
+        return created({ ...turn, model: reply.model, mode: reply.mode, proposals: [] });
     });
 }
