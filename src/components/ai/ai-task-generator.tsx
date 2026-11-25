@@ -1,9 +1,11 @@
 "use client";
 
-import {useTranslations} from "next-intl";
+import {useLocale, useTranslations} from "next-intl";
 import {
     AlertTriangle,
+    ArrowRight,
     Check,
+    ClipboardCheck,
     Loader2,
     RefreshCw,
     Sparkles,
@@ -12,13 +14,13 @@ import {
 } from "lucide-react";
 import {useMemo, useState} from "react";
 
-import {Badge, priorityTone} from "@/components/ui/badge";
+import {Badge, priorityTone, statusTone} from "@/components/ui/badge";
 import {Button} from "@/components/ui/button";
 import {Input, Select, Textarea} from "@/components/ui/input";
 import {Card} from "@/components/ui/layout";
 import {useToast} from "@/components/ui/toast";
 import {useWorkspace} from "@/components/workspace/workspace-provider";
-import {taskPriorities} from "@/lib/domain";
+import {aiProposableStatuses, taskPriorities} from "@/lib/domain";
 import {
     useGetAiTaskDraftsQuery,
     useGetProjectsQuery,
@@ -29,16 +31,20 @@ import {
     useUpdateAiTaskDraftMutation,
 } from "@/lib/redux/api";
 import type {AiTaskDraft, AiTaskDraftUpdateInput} from "@/lib/redux/types";
-import {cn, getApiErrorMessage} from "@/lib/utils";
+import {cn, formatDate, getApiErrorMessage} from "@/lib/utils";
 
+const MIN_PROMPT = 8;
 const MAX_PROMPT = 2000;
+type PromptMode = "tasks" | "actions";
 
 export function AiTaskGenerator() {
     const t = useTranslations("aiGenerator");
+    const tAgents = useTranslations("aiAgents");
     const toast = useToast();
     const {workspace, canEdit} = useWorkspace();
 
     const [prompt, setPrompt] = useState("");
+    const [promptMode, setPromptMode] = useState<PromptMode>("tasks");
     const [projectFilter, setProjectFilter] = useState("");
     const [error, setError] = useState("");
     const [lastMode, setLastMode] = useState<"ai" | "mock" | null>(null);
@@ -75,34 +81,97 @@ export function AiTaskGenerator() {
         return [...map.values()];
     }, [projects]);
 
-    const drafts = data?.tasks ?? [];
+    const drafts = useMemo(() => data?.tasks ?? [], [data?.tasks]);
+    const taskDrafts = useMemo(
+        () => drafts.filter((draft) => draft.actionType === "create_task"),
+        [drafts],
+    );
+    const statusDrafts = useMemo(
+        () => drafts.filter((draft) => draft.actionType === "update_status"),
+        [drafts],
+    );
+    const deadlineDrafts = useMemo(
+        () => drafts.filter((draft) => draft.actionType === "update_deadline"),
+        [drafts],
+    );
+    const actionSections = [
+        {title: "statusSection", drafts: statusDrafts},
+        {title: "deadlineSection", drafts: deadlineDrafts},
+    ] as const;
     const configured = data?.configured ?? false;
     const savingId = updateState.isLoading
         ? updateState.originalArgs?.id
         : undefined;
+    const reviewInProgress =
+        generateState.isLoading &&
+        generateState.originalArgs?.mode === "status-review";
     const busy =
         generateState.isLoading ||
         publishState.isLoading ||
-        rejectState.isLoading;
+        rejectState.isLoading ||
+        updateState.isLoading;
+    const isActionsMode = promptMode === "actions";
+    const promptPlaceholder = t(isActionsMode ? "actionsPlaceholder" : "promptPlaceholder");
+    const canSubmit = canEdit && !busy && prompt.trim().length >= MIN_PROMPT;
+    const singleApplyingId =
+        publishState.isLoading && publishState.originalArgs?.draftIds.length === 1
+            ? publishState.originalArgs.draftIds[0]
+            : undefined;
 
-    const submit = async (nextPrompt = prompt) => {
-        const value = nextPrompt.trim();
-        if (!value || busy) return;
+    const submit = async () => {
+        if (!canSubmit) return;
         setError("");
         try {
             const result = await generate({
                 workspaceId: workspace.id,
-                prompt: value,
-                projectId: projectFilter || null,
+                mode: promptMode,
+                prompt: prompt.trim(),
+                projectId: isActionsMode ? undefined : projectFilter || null,
             }).unwrap();
             setLastMode(result.mode);
             if (result.mode === "mock") {
-                toast.info(t("mockToast"));
+                toast.info(t(isActionsMode ? "actionsMockHint" : "mockToast"));
+            } else if (isActionsMode && result.tasks.length === 0) {
+                toast.info(t("noActionSuggestions"));
             } else {
                 toast.success(t("generated", {count: result.tasks.length}));
             }
         } catch (submitError) {
             setError(getApiErrorMessage(submitError, t("generateError")));
+        }
+    };
+
+    const runStatusReview = async () => {
+        if (busy || !canEdit) return;
+        setError("");
+        try {
+            const result = await generate({
+                workspaceId: workspace.id,
+                mode: "status-review",
+            }).unwrap();
+            setLastMode(result.mode);
+            if (result.tasks.length === 0) {
+                toast.info(t("noStatusSuggestions"));
+            } else {
+                toast.success(
+                    t("statusReviewGenerated", {count: result.tasks.length}),
+                );
+            }
+        } catch (reviewError) {
+            setError(getApiErrorMessage(reviewError, t("generateError")));
+        }
+    };
+
+    const applyOne = async (id: string) => {
+        if (publishState.isLoading) return;
+        try {
+            const result = await publish({
+                workspaceId: workspace.id,
+                draftIds: [id],
+            }).unwrap();
+            toast.success(t("appliedOne", {count: result.published.length}));
+        } catch (applyError) {
+            toast.error(getApiErrorMessage(applyError, t("publishError")));
         }
     };
 
@@ -164,7 +233,7 @@ export function AiTaskGenerator() {
                                 size="sm"
                                 variant="outline"
                                 onClick={() => void submit()}
-                                disabled={busy || !canEdit}
+                                disabled={!canSubmit}
                                 loading={generateState.isLoading}
                             >
                                 <RefreshCw size={14} />
@@ -184,13 +253,45 @@ export function AiTaskGenerator() {
                 </div>
             </div>
 
-            <div className="space-y-3 border-b border-border p-5">
+            <form
+                className="space-y-3 border-b border-border p-5"
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    void submit();
+                }}
+            >
+                <label className="flex flex-wrap items-center gap-2 text-xs font-medium text-text-secondary">
+                    <span>{t("promptMode")}</span>
+                    <Select
+                        value={promptMode}
+                        onChange={(event) => {
+                            setPromptMode(event.target.value as PromptMode);
+                            setError("");
+                        }}
+                        disabled={busy || !canEdit}
+                        className="w-auto"
+                    >
+                        <option value="tasks">{t("createMode")}</option>
+                        <option value="actions">{t("actionsMode")}</option>
+                    </Select>
+                </label>
                 <Textarea
                     value={prompt}
-                    onChange={(event) =>
-                        setPrompt(event.target.value.slice(0, MAX_PROMPT))
-                    }
-                    placeholder={t("promptPlaceholder")}
+                    onChange={(event) => setPrompt(event.target.value)}
+                    onKeyDown={(event) => {
+                        if (
+                            event.key === "Enter" &&
+                            event.ctrlKey &&
+                            !event.nativeEvent.isComposing
+                        ) {
+                            event.preventDefault();
+                            if (!event.repeat && canSubmit) {
+                                event.currentTarget.form?.requestSubmit();
+                            }
+                        }
+                    }}
+                    aria-label={promptPlaceholder}
+                    placeholder={promptPlaceholder}
                     rows={3}
                     maxLength={MAX_PROMPT}
                     disabled={busy || !canEdit}
@@ -200,63 +301,91 @@ export function AiTaskGenerator() {
                         <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => setPrompt(t("examplePrompt"))}
+                            onClick={() =>
+                                setPrompt(t(isActionsMode ? "actionsExamplePrompt" : "examplePrompt"))
+                            }
                             disabled={busy || !canEdit}
                         >
                             {t("useExample")}
                         </Button>
-                        <Select
-                            value={projectFilter}
-                            onChange={(event) =>
-                                setProjectFilter(event.target.value)
-                            }
-                            aria-label={t("projectFilter")}
-                            className="w-auto min-w-[170px]"
-                            disabled={busy}
-                        >
-                            <option value="">{t("allProjects")}</option>
-                            {projects.map((project) => (
-                                <option key={project.id} value={project.id}>
-                                    {project.name}
-                                </option>
-                            ))}
-                        </Select>
+                        {isActionsMode ? null : (
+                            <Select
+                                value={projectFilter}
+                                onChange={(event) =>
+                                    setProjectFilter(event.target.value)
+                                }
+                                aria-label={t("projectFilter")}
+                                className="w-auto min-w-[170px]"
+                                disabled={busy || !canEdit}
+                            >
+                                <option value="">{t("allProjects")}</option>
+                                {projects.map((project) => (
+                                    <option key={project.id} value={project.id}>
+                                        {project.name}
+                                    </option>
+                                ))}
+                            </Select>
+                        )}
                         <span className="text-[10px] text-text-muted">
                             {prompt.length}/{MAX_PROMPT}
                         </span>
                     </div>
-                    <Button
-                        onClick={() => void submit()}
-                        disabled={
-                            busy || !canEdit || prompt.trim().length < 8
-                        }
-                        loading={generateState.isLoading}
-                    >
-                        {generateState.isLoading ? (
-                            <Loader2 size={15} className="animate-spin" />
-                        ) : (
-                            <Sparkles size={15} />
-                        )}
-                        {generateState.isLoading
-                            ? t("generating")
-                            : t("generate")}
-                    </Button>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => void runStatusReview()}
+                            disabled={busy || !canEdit}
+                            loading={reviewInProgress}
+                        >
+                            {reviewInProgress ? (
+                                <Loader2 size={14} className="animate-spin" />
+                            ) : (
+                                <ClipboardCheck size={14} />
+                            )}
+                            {reviewInProgress
+                                ? t("statusReviewing")
+                                : t("statusReview")}
+                        </Button>
+                        <Button
+                            type="submit"
+                            aria-keyshortcuts="Control+Enter"
+                            title={tAgents("sendShortcut")}
+                            disabled={!canSubmit}
+                            loading={
+                                generateState.isLoading && !reviewInProgress
+                            }
+                        >
+                            {generateState.isLoading && !reviewInProgress ? (
+                                <Loader2 size={15} className="animate-spin" />
+                            ) : (
+                                <Sparkles size={15} />
+                            )}
+                            {generateState.isLoading && !reviewInProgress
+                                ? t("generating")
+                                : t("generate")}
+                        </Button>
+                    </div>
                 </div>
 
-                {!configured ? (
+                <p className="text-right text-[10px] text-text-muted">
+                    {tAgents("sendShortcut")}
+                </p>
+
+                {data && !configured ? (
                     <p className="flex items-start gap-2 rounded-lg border border-warning/30 bg-warning/10 px-3 py-2 text-[11px] text-warning">
                         <AlertTriangle size={14} className="mt-0.5 shrink-0" />
-                        {t("mockHint")}
+                        {t(isActionsMode ? "actionsMockHint" : "mockHint")}
                     </p>
                 ) : null}
 
                 {error ? (
-                    <div className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
+                    <div role="alert" className="flex items-start gap-2 rounded-lg border border-error/30 bg-error/10 px-3 py-2 text-xs text-error">
                         <AlertTriangle size={15} className="mt-0.5 shrink-0" />
                         <span className="min-w-0 break-words">{error}</span>
                     </div>
                 ) : null}
-            </div>
+            </form>
 
             <div className="p-5">
                 <div className="mb-3 flex items-center justify-between gap-2">
@@ -296,20 +425,54 @@ export function AiTaskGenerator() {
                         </p>
                     </div>
                 ) : (
-                    <div className="scroll-area max-h-[min(70dvh,760px)] space-y-3 overflow-y-auto pr-1">
-                        {drafts.map((draft, index) => (
-                            <DraftCard
-                                key={draft.id}
-                                draft={draft}
-                                index={index}
-                                projects={projects}
-                                departments={departments}
-                                members={members ?? []}
-                                disabled={busy || !canEdit}
-                                saving={savingId === draft.id}
-                                onSave={save}
-                                onReject={reject}
-                            />
+                    <div className="scroll-area max-h-[min(70dvh,760px)] space-y-4 overflow-y-auto pr-1">
+                        {taskDrafts.length > 0 ? (
+                            <section className="space-y-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                                    {t("draftsTitle")}
+                                    <span className="ml-1.5 rounded-full bg-surface-hover px-1.5 text-[10px] tabular-nums">
+                                        {taskDrafts.length}
+                                    </span>
+                                </p>
+                                {taskDrafts.map((draft, index) => (
+                                    <DraftCard
+                                        key={draft.id}
+                                        draft={draft}
+                                        index={index}
+                                        projects={projects}
+                                        departments={departments}
+                                        members={members ?? []}
+                                        disabled={busy || !canEdit}
+                                        saving={savingId === draft.id}
+                                        onSave={save}
+                                        onReject={reject}
+                                    />
+                                ))}
+                            </section>
+                        ) : null}
+
+                        {actionSections.filter((section) => section.drafts.length > 0).map((section) => (
+                            <section key={section.title} className="space-y-3">
+                                <p className="text-[10px] font-semibold uppercase tracking-wide text-text-muted">
+                                    {t(section.title)}
+                                    <span className="ml-1.5 rounded-full bg-surface-hover px-1.5 text-[10px] tabular-nums">
+                                        {section.drafts.length}
+                                    </span>
+                                </p>
+                                {section.drafts.map((draft, index) => (
+                                    <ActionCard
+                                        key={draft.id}
+                                        draft={draft}
+                                        index={index}
+                                        disabled={busy || !canEdit}
+                                        saving={savingId === draft.id}
+                                        applying={singleApplyingId === draft.id}
+                                        onSave={save}
+                                        onReject={reject}
+                                        onApply={applyOne}
+                                    />
+                                ))}
+                            </section>
                         ))}
                     </div>
                 )}
@@ -531,6 +694,177 @@ function DraftCard({
                     </label>
                 </div>
             </div>
+        </div>
+    );
+}
+
+function ActionCard({
+    draft,
+    index,
+    disabled,
+    saving,
+    applying,
+    onSave,
+    onReject,
+    onApply,
+}: {
+    draft: AiTaskDraft;
+    index: number;
+    disabled: boolean;
+    saving: boolean;
+    applying: boolean;
+    onSave: (id: string, patch: AiTaskDraftUpdateInput) => Promise<void>;
+    onReject: (id: string) => Promise<void>;
+    onApply: (id: string) => Promise<void>;
+}) {
+    const t = useTranslations("aiGenerator");
+    const tStatus = useTranslations("status");
+    const locale = useLocale();
+    const {user} = useWorkspace();
+
+    const isDeadline = draft.actionType === "update_deadline";
+    const currentStatus = draft.task?.status;
+    const suggestedDate =
+        isDeadline && draft.suggestedDeadline
+            ? formatDate(draft.suggestedDeadline, "en-CA", {
+                timeZone: user.timezone,
+                year: "numeric",
+                month: "2-digit",
+                day: "2-digit",
+            })
+            : "";
+    const canApply = draft.task && (isDeadline ? suggestedDate : draft.suggestedStatus);
+
+    return (
+        <div
+            className={cn(
+                "rounded-xl border border-border bg-surface-elevated/40 p-3",
+                saving && "opacity-70",
+            )}
+        >
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+                <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-accent/10 text-[10px] font-semibold tabular-nums text-accent">
+                    {index + 1}
+                </span>
+                {!isDeadline && currentStatus ? (
+                    <>
+                        <Badge tone={statusTone[currentStatus]}>
+                            {tStatus(currentStatus)}
+                        </Badge>
+                        <ArrowRight
+                            size={13}
+                            className="shrink-0 text-text-muted"
+                        />
+                    </>
+                ) : null}
+                {!isDeadline && draft.suggestedStatus ? (
+                    <Badge tone={statusTone[draft.suggestedStatus]}>
+                        {tStatus(draft.suggestedStatus)}
+                    </Badge>
+                ) : null}
+                <span className="ml-auto text-[10px] text-text-muted">
+                    {saving ? t("saving") : t("draftLabel")}
+                </span>
+                <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={disabled || !canApply}
+                    loading={applying}
+                    onClick={() => void onApply(draft.id)}
+                >
+                    <Check size={13} />
+                    {t("applyOne")}
+                </Button>
+                <button
+                    type="button"
+                    onClick={() => void onReject(draft.id)}
+                    disabled={disabled}
+                    aria-label={t("reject")}
+                    title={t("reject")}
+                    className="flex size-7 items-center justify-center rounded-md text-text-muted hover:bg-error/10 hover:text-error disabled:opacity-50"
+                >
+                    <Trash2 size={14} />
+                </button>
+            </div>
+
+            <p className="text-sm font-medium text-text-primary">
+                {draft.title}
+            </p>
+            {!draft.task ? (
+                <p className="mt-1 text-[10px] text-warning">
+                    {t("targetMissing")}
+                </p>
+            ) : null}
+            {isDeadline && draft.task ? (
+                <dl className="mt-1 flex flex-wrap gap-x-2 text-xs text-text-secondary">
+                    <dt>{t("currentDeadline")}</dt>
+                    <dd className="font-medium">
+                        {formatDate(draft.task.dueDate, locale, {
+                            timeZone: user.timezone,
+                            year: "numeric",
+                            month: "short",
+                            day: "numeric",
+                        })}
+                    </dd>
+                </dl>
+            ) : null}
+
+            <Textarea
+                defaultValue={draft.suggestedReason ?? ""}
+                rows={2}
+                maxLength={500}
+                disabled={disabled}
+                aria-label={t("reason")}
+                placeholder={t(isDeadline ? "reason" : "reasonPlaceholder")}
+                className="mt-2.5"
+                onBlur={(event) => {
+                    const value = event.target.value.trim();
+                    if (value !== (draft.suggestedReason ?? "")) {
+                        void onSave(draft.id, {
+                            suggestedReason: value || null,
+                        });
+                    }
+                }}
+            />
+
+            <label className="mt-2 flex items-center gap-2 text-[10px] text-text-muted">
+                {isDeadline ? (
+                    <>
+                        <span>{t("newDeadline")}</span>
+                        <Input
+                            type="date"
+                            value={suggestedDate}
+                            disabled={disabled}
+                            className="w-auto min-w-[150px]"
+                            onChange={(event) =>
+                                void onSave(draft.id, {
+                                    suggestedDeadline: event.target.value || null,
+                                })
+                            }
+                        />
+                    </>
+                ) : (
+                    <>
+                        <span>{t("newStatus")}</span>
+                        <Select
+                            value={draft.suggestedStatus ?? ""}
+                            disabled={disabled}
+                            className="w-auto min-w-[150px]"
+                            onChange={(event) =>
+                                void onSave(draft.id, {
+                                    suggestedStatus: event.target.value as NonNullable<AiTaskDraft["suggestedStatus"]>,
+                                })
+                            }
+                        >
+                            {aiProposableStatuses.map((status) => (
+                                <option key={status} value={status}>
+                                    {tStatus(status)}
+                                </option>
+                            ))}
+                        </Select>
+                    </>
+                )}
+            </label>
         </div>
     );
 }

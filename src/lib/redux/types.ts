@@ -451,6 +451,11 @@ export type AiPlan = {
     items: AiPlanItem[];
 };
 
+export type AiTaskDraftActionType =
+    | "create_task"
+    | "update_status"
+    | "update_deadline";
+
 export type AiTaskDraft = {
     id: string;
     workspaceId: string;
@@ -464,6 +469,10 @@ export type AiTaskDraft = {
     suggestedDeadline: IsoDateString | null;
     suggestedAssigneeId: string | null;
     estimateMinutes: number | null;
+    actionType: AiTaskDraftActionType;
+    targetTaskId: string | null;
+    suggestedStatus: TaskStatus | null;
+    suggestedReason: string | null;
     state: "draft" | "published" | "rejected";
     publishedTaskId: string | null;
     createdAt: IsoDateString;
@@ -471,6 +480,7 @@ export type AiTaskDraft = {
     project: { id: string; name: string; color: string } | null;
     department: { id: string; name: string; color: string } | null;
     assignee: { id: string; name: string; avatarUrl: string | null } | null;
+    task: { id: string; title: string; status: TaskStatus; dueDate: IsoDateString | null } | null;
 };
 
 export type AiTaskDraftList = {
@@ -481,7 +491,7 @@ export type AiTaskDraftList = {
 };
 
 export type AiTaskGenerationResult = {
-    batchId: string;
+    batchId: string | null;
     mode: "ai" | "mock";
     model: string;
     tasks: AiTaskDraft[];
@@ -496,6 +506,8 @@ export type AiTaskDraftUpdateInput = {
     departmentId?: string | null;
     projectId?: string | null;
     estimateMinutes?: number | null;
+    suggestedStatus?: TaskStatus;
+    suggestedReason?: string | null;
 };
 
 export type Health = {
@@ -692,8 +704,8 @@ export type AiConversationCreateInput = {
 };
 
 export type AiMessageCreateInput = {
-    model?: string;
     content: string;
+    model?: string;
 };
 
 export type AiPlanRequest = {
@@ -704,7 +716,8 @@ export type AiPlanRequest = {
 
 export type AiTaskGenerationInput = {
     workspaceId: string;
-    prompt: string;
+    mode?: "tasks" | "status-review" | "actions";
+    prompt?: string;
     projectId?: string | null;
 };
 

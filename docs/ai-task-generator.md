@@ -1,6 +1,6 @@
 # AI Task Generator
 
-Experimental, isolated prototype on top of the existing AI Assistant page. It turns a natural-language request into editable task drafts. Drafts live in `ai_task_drafts` and do **not** appear in the active task list until an authorized user confirms them.
+The Task Agent turns a natural-language request into editable task drafts. It opens by default in `/ai-workspace`. The agent selector in `/ai-assistant` and `/ai-workspace` can switch between the chat assistant and the Task Agent. The link beside the selector opens the chosen agent in a new tab. Both composers support Ctrl+Enter. Drafts live in `ai_task_drafts` and are applied when an authorized user confirms them.
 
 ## How it works
 
@@ -18,7 +18,7 @@ Experimental, isolated prototype on top of the existing AI Assistant page. It tu
 | Method | Path | Purpose |
 |---|---|---|
 | `GET` | `/api/ai/task-generator?workspaceId=…` | Pending drafts + provider status |
-| `POST` | `/api/ai/task-generator` | Generate drafts |
+| `POST` | `/api/ai/task-generator` | Generate task drafts, review statuses, or draft requested changes |
 | `PATCH` | `/api/ai/task-generator/[id]` | Edit a pending draft |
 | `DELETE` | `/api/ai/task-generator/[id]` | Reject a draft |
 | `POST` | `/api/ai/task-generator/publish` | Publish 1–50 drafts idempotently |
@@ -102,3 +102,34 @@ The current permission boundary is workspace-level. The planned extension:
 ## Current implementation notes (2026-11-12)
 
 The organizational tree and server-side scopes are implemented. Publication records confirmedById/confirmedAt and generation mode/model. Project and department consistency is enforced; dates are strictly parsed in the actor timezone and provider deadlines outside today…+21 days are not accepted as suggestions. Human approval remains mandatory. Task history records AI publication. Historical test results above are not a claim that a live production model was tested in this environment. `npm test` supplies disposable-database regression tests for permissions and idempotent publication.
+
+## AI Workspace (status-change drafts, 2026-11-21)
+
+The drafts pipeline now covers two draft kinds (`ai_task_drafts.action_type`):
+
+- `create_task` — the original flow described above.
+- `update_status` — a proposed status transition for an existing task (`target_task_id`, `suggested_status`, `suggested_reason`).
+
+Both kinds live on the dedicated **AI Workspace** page (`/ai-workspace`, sidebar item "ИИ-воркспейс"). The embedded generator was moved off the AI Assistant page.
+
+### How status review works
+
+1. `POST /api/ai/task-generator` with `{"workspaceId": "...", "mode": "status-review"}`.
+2. The server loads up to 30 open tasks inside the caller's task scope and asks the provider for 1–10 suggestions (strict JSON schema, same retry/fallback behavior as task generation).
+3. Suggestions are validated server-side: unknown task IDs are dropped, no-op transitions are skipped, `completed` is only suggested for tasks without `requiresReview`, `blocked` requires a reason, and an identical pending proposal for the same task+status is not duplicated.
+4. Drafts appear in the AI Workspace; the user can edit the suggested status/reason, then **Apply** one draft, apply all drafts, or reject.
+5. Applying runs through the regular task engine: plain transitions go via `updateTask` (permissions, history, timers, notifications), `blocked` goes via the workflow action (`block`) and therefore requires a reason. Publishing is idempotent via `publishedTaskId`.
+
+### Hard limits
+
+- The AI may only propose `todo`, `queued`, `in_progress`, `completed` (non-review tasks) and `blocked`. `under_review` and `cancelled` are workflow-governed and stay manual-only (`aiProposableStatuses` in `src/lib/domain.ts`).
+- A `completed` suggestion for a `requiresReview` task is rejected at publish time (`TASK_REVIEW_REQUIRED`).
+- The same rolling rate limit (30 drafts/minute/user) covers both draft kinds.
+- Mock mode is deterministic and clearly labelled; nothing is applied to real tasks without an explicit human confirmation.
+
+## Requested changes (2026-11-25)
+
+In the Task Agent, choose **Change tasks**, then describe a status or deadline change (for example, “Move the request form task to tomorrow”). `POST /api/ai/task-generator` accepts `{workspaceId, mode: "actions", prompt}` and returns editable `update_status` or `update_deadline` drafts. This mode requires a configured AI provider. The chat assistant answers questions and helps with planning.
+
+- The provider receives at most 30 scoped tasks. The server validates returned IDs and statuses, limits suggested deadlines to today through 365 days ahead, skips matching pending proposals, and enforces the shared draft quota.
+- Applying a batch runs task updates, workflow transitions, activity records and draft publication in one transaction. The task engine checks permissions such as `changeDeadline` at publication. `publishedTaskId` makes repeated confirmation idempotent.

@@ -504,6 +504,24 @@ export const aiTaskDrafts = sqliteTable(
             { onDelete: "set null" },
         ),
         estimateMinutes: integer("estimate_minutes"),
+        actionType: text("action_type", {
+            enum: ["create_task", "update_status", "update_deadline"],
+        })
+            .notNull()
+            .default("create_task"),
+        targetTaskId: text("target_task_id").references(() => tasks.id),
+        suggestedStatus: text("suggested_status", {
+            enum: [
+                "todo",
+                "queued",
+                "in_progress",
+                "under_review",
+                "blocked",
+                "completed",
+                "cancelled",
+            ],
+        }),
+        suggestedReason: text("suggested_reason"),
         state: text("state", {
             enum: ["draft", "published", "rejected"],
         })

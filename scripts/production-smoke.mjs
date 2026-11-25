@@ -129,7 +129,7 @@ try {
         assert.equal(r.status, 200, path + JSON.stringify(r.data));
     }
     const employee = await login(
-        "dilnoza.ismoilova@taskflow.ai",
+        "nodira.saidova@mayak.example",
         "Password123!",
     );
     assert.equal(
@@ -202,7 +202,7 @@ try {
     );
     assert.equal(report.data.data.entries.length, 1);
     const collaborator = await login(
-        "sardor.mirzaev@taskflow.ai",
+        "roman.kim@mayak.example",
         "Password123!",
     );
     assert.equal(

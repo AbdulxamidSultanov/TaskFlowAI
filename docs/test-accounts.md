@@ -1,36 +1,22 @@
-# Тестовые аккаунты сотрудников
+# Демо-аккаунты веб-студии «Маяк»
 
-Это существующие демонстрационные аккаунты текущей базы. Пароли проверены по хешам; записи и задачи не сбрасывались. Не используйте эти публичные пароли с реальными данными.
+Веб-студия «Маяк» — вымышленная команда из 12 человек. В её рабочем пространстве есть клиентские веб-проекты, задачи, комментарии, запросы на проверку и встречи в календаре.
 
-Вход: `/ru/login`. Для сравнения аккаунтов используйте отдельные профили браузера или выходите из предыдущего аккаунта. «Мой день» показывает личные задачи; руководитель дополнительно открывает «Контроль команды».
+Войдите на странице `/ru/login`. Пароль владельца — `Demo1234!`. Пароль всех сотрудников — `Password123!`. Используйте эти публичные пароли только для демонстрационных данных.
 
-| Сотрудник | Должность | Логин | Пароль | Область |
-|---|---|---|---|---|
-| Akmal Rashidov | Finance Specialist | akmal.rashidov@taskflow.ai | Password123! | self |
-| Anvar Rakhmonov | SEO Specialist | anvar.rakhmonov@taskflow.ai | Password123! | self |
-| Aziz Karimov | Engineering Manager | aziz.karimov@taskflow.ai | Password123! | team |
-| Bekzod Yusupov | DevOps Engineer | bekzod.yusupov@taskflow.ai | Password123! | self |
-| Davron Yoldoshev | Office Manager | davron.yoldoshev@taskflow.ai | Password123! | self |
-| Demo Admin | Workspace Admin | demo@taskflow.ai | Demo1234! | self |
-| Dilnoza Ismoilova | Senior Backend Engineer | dilnoza.ismoilova@taskflow.ai | Password123! | self |
-| Farrukh Nazarov | Content Strategist | farrukh.nazarov@taskflow.ai | Password123! | self |
-| Feruza Sobirova | Support Lead | feruza.sobirova@taskflow.ai | Password123! | self |
-| Gulnora Karimova | Partnership Manager | gulnora.karimova@taskflow.ai | Password123! | self |
-| Jasur Tursunov | Frontend Engineer | jasur.tursunov@taskflow.ai | Password123! | self |
-| Javohir Usmonov | Operations Manager | javohir.usmonov@taskflow.ai | Password123! | team |
-| Kamila Saidova | Head of Product | kamila.saidova@taskflow.ai | Password123! | team |
-| Lola Tashkentova | Growth Manager | lola.tashkentova@taskflow.ai | Password123! | self |
-| Madina Rakhimova | QA Engineer | madina.rakhimova@taskflow.ai | Password123! | self |
-| Malika Ergasheva | Design Lead | malika.ergasheva@taskflow.ai | Password123! | team |
-| Munisa Tursunova | People Partner | munisa.tursunova@taskflow.ai | Password123! | self |
-| Nigora Yuldasheva | Product Operations | nigora.yuldasheva@taskflow.ai | Password123! | self |
-| Nilufar Qodirova | Design Systems Designer | nilufar.qodirova@taskflow.ai | Password123! | self |
-| Otabek Sattorov | Brand Designer | otabek.sattorov@taskflow.ai | Password123! | self |
-| Rustam Abdullaev | Product Manager | rustam.abdullaev@taskflow.ai | Password123! | self |
-| Sardor Mirzaev | Product Designer | sardor.mirzaev@taskflow.ai | Password123! | self |
-| Sevara Nazarova | Product Analyst | sevara.nazarova@taskflow.ai | Password123! | self |
-| Shahnoza Alimova | Marketing Lead | shahnoza.alimova@taskflow.ai | Password123! | team |
-| Timur Khamidov | Technical Writer | timur.khamidov@taskflow.ai | Password123! | self |
-| Zarina Akhmedova | UX Researcher | zarina.akhmedova@taskflow.ai | Password123! | self |
+| Сотрудник | Должность | Логин | Доступ |
+|---|---|---|---|
+| Шахзод Рахимов | Основатель студии | `demo@taskflow.ai` | Владелец |
+| Малика Хамидова | Руководитель проектов | `malika.khamidova@mayak.example` | Рабочее пространство |
+| Тимур Алиев | Технический руководитель | `timur.aliev@mayak.example` | Команда |
+| Нодира Саидова | Backend-разработчик | `nodira.saidova@mayak.example` | Личный |
+| Артём Юлдашев | Frontend-разработчик | `artem.yuldashev@mayak.example` | Личный |
+| Умид Мансуров | Full-stack-разработчик | `umid.mansurov@mayak.example` | Личный |
+| Сабина Мирзаева | Руководитель дизайна | `sabina.mirzaeva@mayak.example` | Команда |
+| Роман Ким | UX/UI-дизайнер | `roman.kim@mayak.example` | Личный |
+| Диёра Назарова | QA-инженер и координатор релизов | `diyora.nazarova@mayak.example` | Команда |
+| Антон Усманов | DevOps-инженер | `anton.usmanov@mayak.example` | Личный |
+| Зарина Алимова | Руководитель клиентского сервиса | `zarina.alimova@mayak.example` | Команда |
+| Мурод Азимов | Контент-менеджер и специалист поддержки | `murod.azimov@mayak.example` | Личный |
 
-Обычный сотрудник может работать со своей задачей, комментировать и записывать время. Viewer только читает. Участник другой команды видит только явно выданные ему задачи. Руководитель проверяет чужой результат; собственную работу принять нельзя.
+В «Моём дне» видны личные задачи. В «Контроле команды» технический руководитель видит задачи разработчиков, включая результат Нодиры, ожидающий проверки. У владельца и руководителя проектов есть обзор всех отделов.

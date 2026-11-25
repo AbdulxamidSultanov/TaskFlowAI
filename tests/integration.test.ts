@@ -52,13 +52,12 @@ after(() => {
     database?.client.close();
     try {
         rmSync(dir, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 });
-    } catch (error) {
-        // libSQL may keep the temporary SQLite file locked until process exit on Windows.
-        if (process.platform !== "win32" || (error as NodeJS.ErrnoException).code !== "EPERM")
-            throw error;
+    } catch {
+        // Windows may hold the SQLite WAL file handle briefly until process exit.
     }
 });
 const pagination = { page: 1, pageSize: 100, limit: 100, offset: 0 };
+
 async function countTasks() {
     return Number(
         (await database.client.execute("select count(*) n from tasks")).rows[0]
@@ -1105,6 +1104,308 @@ test("ownership transfer preserves the sole owner, including on self-transfer", 
     assert.equal(owners.length, 1);
     const [updated] = await db.select().from(workspaces).where(eq(workspaces.id, workspace.id));
     assert.equal(updated.ownerId, owners[0].userId);
+});
+
+test("AI status draft applies through updateTask and is idempotent", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI status draft target",
+        assigneeId: employee.id,
+    });
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: manager.id,
+            batchId: "status-batch-1",
+            actionType: "update_status",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedStatus: "in_progress",
+            suggestedReason: "Ready to start",
+        })
+        .returning();
+    const first = await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    const second = await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    assert.deepEqual(first, second);
+    assert.equal(first.length, 1);
+    assert.equal(first[0]!.taskId, task!.id);
+    const [saved] = await database.db
+        .select()
+        .from(schema.aiTaskDrafts)
+        .where(eq(schema.aiTaskDrafts.id, draft.id));
+    assert.equal(saved.state, "published");
+    assert.equal(saved.publishedTaskId, task!.id);
+    assert.equal(saved.confirmedById, manager.id);
+    const detail = await taskService.getTaskDetail(task!.id);
+    assert.equal(detail!.status, "in_progress");
+    const activity = await database.db
+        .select()
+        .from(schema.taskActivity)
+        .where(eq(schema.taskActivity.taskId, task!.id));
+    assert.ok(activity.some((row) => row.action === "updated"));
+});
+
+test("AI blocked suggestion applies via workflow with a reason", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI blocked draft target",
+        assigneeId: employee.id,
+    });
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: manager.id,
+            batchId: "status-batch-2",
+            actionType: "update_status",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedStatus: "blocked",
+        })
+        .returning();
+    // No reason: blocking requires one.
+    await assert.rejects(
+        ai.publishDrafts(manager, workspaceId, [draft.id]),
+        { code: "BLOCK_REASON_REQUIRED" },
+    );
+    await ai.updateDraft(manager, draft.id, {
+        suggestedReason: "Waiting for API credentials",
+    });
+    await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    const detail = await taskService.getTaskDetail(task!.id);
+    assert.equal(detail!.status, "blocked");
+});
+
+test("AI cannot complete a task that requires review", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI review task",
+        assigneeId: employee.id,
+        requiresReview: true,
+    });
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: manager.id,
+            batchId: "status-batch-3",
+            actionType: "update_status",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedStatus: "completed",
+            suggestedReason: "Looks done",
+        })
+        .returning();
+    await assert.rejects(
+        ai.publishDrafts(manager, workspaceId, [draft.id]),
+        { code: "TASK_REVIEW_REQUIRED" },
+    );
+});
+
+test("employee cannot publish an AI status draft without task rights", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI forbidden target",
+        assigneeId: manager.id,
+    });
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: employee.id,
+            batchId: "status-batch-4",
+            actionType: "update_status",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedStatus: "in_progress",
+        })
+        .returning();
+    // The task is outside the employee's scope, so it is hidden entirely.
+    await assert.rejects(
+        ai.publishDrafts(employee, workspaceId, [draft.id]),
+        { code: "NOT_FOUND" },
+    );
+});
+
+test("AI status review creates drafts in mock mode, skips no-ops and dedupes", async () => {
+    process.env.AI_MOCK = "1";
+    const result = await ai.generateStatusReview(admin, { workspaceId });
+    assert.equal(result.mode, "mock");
+    assert.ok(result.tasks.length >= 1);
+    for (const draft of result.tasks) {
+        assert.equal(draft.actionType, "update_status");
+        assert.ok(draft.targetTaskId);
+        assert.ok(draft.suggestedStatus);
+        assert.notEqual(draft.task!.status, draft.suggestedStatus);
+    }
+    // The same pending proposal is not duplicated for the same task+status.
+    await assert.rejects(
+        ai.generateStatusReview(admin, { workspaceId }),
+        { code: "NO_STATUS_SUGGESTIONS" },
+    );
+});
+
+test("updateDraft validates AI-proposable statuses", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI update draft target",
+    });
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: manager.id,
+            batchId: "status-batch-5",
+            actionType: "update_status",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedStatus: "in_progress",
+        })
+        .returning();
+    const updated = await ai.updateDraft(manager, draft.id, {
+        suggestedStatus: "queued",
+        suggestedReason: "Queued after current sprint work",
+    });
+    assert.equal(updated!.suggestedStatus, "queued");
+    assert.equal(updated!.suggestedReason, "Queued after current sprint work");
+    await assert.rejects(
+        ai.updateDraft(manager, draft.id, { suggestedStatus: "cancelled" }),
+        { code: "INVALID_SUGGESTED_STATUS" },
+    );
+});
+
+test("AI deadline draft applies through updateTask and is idempotent", async () => {
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "AI deadline draft target",
+        assigneeId: employee.id,
+    });
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(18, 0, 0, 0);
+    const [draft] = await database.db
+        .insert(schema.aiTaskDrafts)
+        .values({
+            workspaceId,
+            userId: manager.id,
+            batchId: "deadline-batch-1",
+            actionType: "update_deadline",
+            targetTaskId: task!.id,
+            title: task!.title,
+            suggestedDeadline: tomorrow,
+            suggestedReason: "Moved per user request",
+        })
+        .returning();
+    const first = await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    const second = await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    assert.deepEqual(first, second);
+    assert.equal(first.length, 1);
+    assert.equal(first[0]!.taskId, task!.id);
+    const detail = await taskService.getTaskDetail(task!.id);
+    assert.ok(detail!.dueDate);
+    assert.equal(
+        new Date(detail!.dueDate!).toISOString(),
+        tomorrow.toISOString(),
+    );
+    // Publishing again after a manual due-date change is a no-op-free idempotent return.
+    await taskService.updateTask(manager, task!.id, {
+        dueDate: new Date(Date.now() + 72 * 3600000).toISOString(),
+    });
+    const third = await ai.publishDrafts(manager, workspaceId, [draft.id]);
+    assert.deepEqual(third, first);
+});
+
+test("withDbRetry recovers from SQLITE_BUSY and rethrows other errors", async () => {
+    const { withDbRetry } = await import("../src/db");
+    let busyAttempts = 0;
+    const recovered = await withDbRetry(async () => {
+        busyAttempts += 1;
+        if (busyAttempts < 3) {
+            throw Object.assign(new Error("database is locked"), {
+                code: "SQLITE_BUSY",
+            });
+        }
+        return "ok";
+    }, "test");
+    assert.equal(recovered, "ok");
+    assert.equal(busyAttempts, 3);
+    await assert.rejects(
+        withDbRetry(async () => {
+            throw new Error("boom");
+        }, "test"),
+        { message: "boom" },
+    );
+});
+
+test("chat action proposals are skipped in mock mode", async () => {
+    process.env.AI_MOCK = "1";
+    const result = await ai.proposeChatActions(admin, {
+        workspaceId,
+        messages: [
+            {
+                role: "user",
+                content: "перенеси дедлайны просроченных задач на завтра",
+            },
+        ],
+    });
+    assert.deepEqual(result.drafts, []);
+    assert.equal(result.batchId, null);
+});
+
+test("task agent proposes visible changes and publishes a batch atomically", async (t) => {
+    const { aiTaskGenerationSchema } = await import("../src/lib/api/schemas");
+    assert.equal(aiTaskGenerationSchema.safeParse({ workspaceId, mode: "actions" }).success, false);
+    const input = aiTaskGenerationSchema.parse({
+        workspaceId, mode: "actions", prompt: "Update the task agent test deadline and status",
+    });
+    const task = await taskService.createTask(admin, {
+        projectId,
+        title: "Task agent batch regression",
+        assigneeId: employee.id,
+    });
+    const nextWeek = new Date(Date.now() + 7 * 86400000).toISOString().slice(0, 10);
+    const previousMock = process.env.AI_MOCK;
+    const previousKey = process.env.AI_API_KEY;
+    process.env.AI_MOCK = "0";
+    process.env.AI_API_KEY = "test-provider-key";
+    t.after(() => {
+        if (previousMock === undefined) delete process.env.AI_MOCK;
+        else process.env.AI_MOCK = previousMock;
+        if (previousKey === undefined) delete process.env.AI_API_KEY;
+        else process.env.AI_API_KEY = previousKey;
+    });
+    t.mock.method(globalThis, "fetch", async () => Response.json({
+        choices: [{message: {content: JSON.stringify({actions: [
+            {action: "update_status", taskId: task!.id, status: "in_progress"},
+            {action: "update_deadline", taskId: task!.id, deadline: nextWeek},
+            {action: "update_status", taskId: "outside-the-workspace", status: "in_progress"},
+            {action: "create_task", newTask: {title: "Unexpected creation"}},
+        ]})}}],
+    }));
+
+    const command = {
+        workspaceId,
+        existingOnly: true,
+        messages: [{role: "user" as const, content: input.prompt!}],
+    };
+    const { drafts } = await ai.proposeChatActions(admin, command);
+    assert.equal(drafts.length, 2);
+    assert.deepEqual((await ai.proposeChatActions(admin, command)).drafts, []);
+    assert.equal((await taskService.getTaskDetail(task!.id))!.status, "todo");
+    const status = drafts.find((draft) => draft.actionType === "update_status")!;
+    const deadline = drafts.find((draft) => draft.actionType === "update_deadline")!;
+    await ai.updateDraft(admin, deadline.id, {suggestedDeadline: null});
+    await assert.rejects(ai.publishDrafts(admin, workspaceId, [status.id, deadline.id]), {
+        code: "INVALID_SUGGESTED_DEADLINE",
+    });
+    assert.equal((await taskService.getTaskDetail(task!.id))!.status, "todo");
+    await ai.updateDraft(admin, deadline.id, {suggestedDeadline: nextWeek});
+    const published = await ai.publishDrafts(admin, workspaceId, [status.id, deadline.id]);
+    assert.deepEqual(await ai.publishDrafts(admin, workspaceId, [status.id, deadline.id]), published);
+    const detail = (await taskService.getTaskDetail(task!.id))!;
+    assert.equal(detail.status, "in_progress");
+    assert.equal(detail.dueDate?.toISOString().slice(0, 10), nextWeek);
 });
 
 test("workspace removal revokes task grants and closes the member's active work", async () => {
